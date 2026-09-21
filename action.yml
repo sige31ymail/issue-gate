@@ -36,8 +36,8 @@ outputs:
   result:
     description: 'READY, NEEDS_DETAIL, NEEDS_SPLIT, HUMAN_REVIEW, or BLOCKED.'
   label-applied:
-    description: 'The night-ready label when the Issue passed, otherwise empty.'
-  night-ready:
+    description: 'The night-queue label when the Issue passed, otherwise empty.'
+  ready:
     description: '"true" when the Issue was admitted to the night queue.'
 
 runs:

@@ -64,7 +64,7 @@ export function renderComment(decision: GateDecision, ctx: AuditContext): string
     lines.push(
       `> Evaluation could not complete: ${decision.error}`,
       '>',
-      '> The gate fails closed, so the night-ready label was not applied.',
+      '> The gate fails closed, so the Issue was not admitted to the night queue.',
       '',
     );
   }

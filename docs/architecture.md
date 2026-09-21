@@ -96,7 +96,7 @@ carries.
 ## Re-evaluation
 
 The caller workflow triggers on `edited` as well as `opened`. An Issue that was
-promoted and then weakened loses `night-ready` again, because labels are
+promoted and then weakened loses `night-queue` again, because labels are
 *reconciled* rather than added: the gate computes the set of labels the Issue
 should carry and removes the ones it owns that are not in it. Labels outside the
 managed set are never touched.
@@ -129,10 +129,6 @@ marker across repositories.
 
 ## Open questions
 
-- **The `night-ready` label's real name.** The handoff says to preserve the
-  established name; the other repositories were not visible from here to check
-  it. It is configurable via `labels.night_ready` rather than assumed, so
-  correcting it is a one-line change in the policy.
 - **Threshold calibration.** Every number in the shipped policy is a starting
   value. Six checks ANDed at 0.90–0.95, plus the dead band, will admit few
   Issues at first. That is the intended direction of error for a first run, but

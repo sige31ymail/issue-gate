@@ -146,7 +146,7 @@ export async function run(): Promise<void> {
 
   core.setOutput('result', decision.outcome);
   core.setOutput('label-applied', labelApplied ?? '');
-  core.setOutput('night-ready', String(decision.outcome === 'READY'));
+  core.setOutput('ready', String(decision.outcome === 'READY'));
 
   if (decision.error) {
     // Surface the reason without failing the job: a fail-closed run did its job.
@@ -157,7 +157,7 @@ export async function run(): Promise<void> {
 
 run().catch((error: unknown) => {
   // Reaching here means the gate could not even record a decision. Nothing was
-  // labelled night-ready, which is the outcome that matters.
+  // admitted to the night queue, which is the outcome that matters.
   const message = error instanceof PolicyError ? `invalid policy: ${error.message}` : String(error);
   core.setFailed(message);
 });

@@ -22,7 +22,7 @@ round trip.
 
 | Outcome | Meaning | Label |
 | --- | --- | --- |
-| `READY` | Safe to run unattended | `night-ready` |
+| `READY` | Safe to run unattended | `night-queue` |
 | `NEEDS_DETAIL` | Acceptance criteria are unclear or unverifiable | `needs-detail` |
 | `NEEDS_SPLIT` | Too large for one run | `needs-split` |
 | `HUMAN_REVIEW` | Needs a person's decision, or the model was undecided | `human-review` |
@@ -93,7 +93,7 @@ result, and embeds a compact JSON payload for later aggregation:
   "repository": "sige31ymail/hexbound",
   "issue_number": 123,
   "checks": { "scope_small_enough": 0.96, "dependency_blocked": 0.03 },
-  "label_applied": "night-ready",
+  "label_applied": "night-queue",
   "policy_version": "v1",
   "model": "jev-1.13.0",
   "run_url": "https://github.com/...",

@@ -9,7 +9,7 @@ gate: night-ready
 labels:
   # The label night-issues already consumes. If the established name differs,
   # change it here rather than renaming the label in the target repositories.
-  night_ready: night-ready
+  night_ready: night-queue
   needs_detail: needs-detail
   needs_split: needs-split
   human_review: human-review

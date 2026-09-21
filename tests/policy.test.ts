@@ -188,6 +188,13 @@ describe('the shipped policy', () => {
     ]);
   });
 
+  it('uses the label night-issues actually consumes', async () => {
+    // Pinned so a rename is a deliberate change with a failing test, not a
+    // silent drift away from what the night queue reads.
+    const policy = await loadPolicyFile(new URL('../policies/night-ready.yml', import.meta.url).pathname);
+    expect(policy.labels.night_ready).toBe('night-queue');
+  });
+
   it('maps every outcome to a distinct managed label', async () => {
     const policy = await loadPolicyFile(new URL('../policies/night-ready.yml', import.meta.url).pathname);
     expect(labelForOutcome(policy.labels, 'BLOCKED')).toBe('blocked');

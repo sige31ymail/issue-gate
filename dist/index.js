@@ -40710,7 +40710,7 @@ function percent(probability) {
 function renderComment(decision, ctx) {
     const lines = [COMMENT_MARKER, '', '## Issue Gate Evaluation', ''];
     if (decision.error) {
-        lines.push(`> Evaluation could not complete: ${decision.error}`, '>', '> The gate fails closed, so the night-ready label was not applied.', '');
+        lines.push(`> Evaluation could not complete: ${decision.error}`, '>', '> The gate fails closed, so the Issue was not admitted to the night queue.', '');
     }
     if (decision.checks.length > 0) {
         lines.push('| Check | P(true) | Threshold | Result |', '| --- | --- | --- | --- |');
@@ -40838,7 +40838,7 @@ class GitHubGateClient {
      *
      * Only labels in `managed` are touched, so labels the gate does not own are
      * left exactly as they are. Removing is what lets a previously-READY Issue
-     * lose its night-ready label once an edit makes it unready again.
+     * lose its night-queue label once an edit makes it unready again.
      */
     async reconcileLabels(issueNumber, current, managed, desired) {
         const currentSet = new Set(current);
@@ -41937,7 +41937,7 @@ async function run() {
     }
     core.setOutput('result', decision.outcome);
     core.setOutput('label-applied', labelApplied ?? '');
-    core.setOutput('night-ready', String(decision.outcome === 'READY'));
+    core.setOutput('ready', String(decision.outcome === 'READY'));
     if (decision.error) {
         // Surface the reason without failing the job: a fail-closed run did its job.
         core.warning(`issue-gate failed closed: ${decision.error}`);
@@ -41946,7 +41946,7 @@ async function run() {
 }
 run().catch((error) => {
     // Reaching here means the gate could not even record a decision. Nothing was
-    // labelled night-ready, which is the outcome that matters.
+    // admitted to the night queue, which is the outcome that matters.
     const message = error instanceof PolicyError ? `invalid policy: ${error.message}` : String(error);
     core.setFailed(message);
 });

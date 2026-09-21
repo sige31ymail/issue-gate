@@ -116,7 +116,7 @@ export class GitHubGateClient {
    *
    * Only labels in `managed` are touched, so labels the gate does not own are
    * left exactly as they are. Removing is what lets a previously-READY Issue
-   * lose its night-ready label once an edit makes it unready again.
+   * lose its night-queue label once an edit makes it unready again.
    */
   async reconcileLabels(
     issueNumber: number,

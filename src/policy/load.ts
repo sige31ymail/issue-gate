@@ -62,11 +62,18 @@ function validateCheck(name: string, check: unknown): CheckPolicy {
     assert(typeof criteria === 'object', `check "${name}": criteria must be a mapping`);
   }
 
+  const enforced = c['enforced'];
+  assert(
+    enforced === undefined || typeof enforced === 'boolean',
+    `check "${name}": enforced must be true or false`,
+  );
+
   const result: CheckPolicy = {
     kind: 'noul',
     outcome: c['outcome'],
     instructions: c['instructions'],
   };
+  if (enforced === false) result.enforced = false;
   if (hasMin) result.min_yes_probability = c['min_yes_probability'] as number;
   if (hasMax) result.max_yes_probability = c['max_yes_probability'] as number;
   if (criteria) result.criteria = criteria;
@@ -101,6 +108,21 @@ function assertReachable(name: string, check: CheckPolicy, deadBand: number): vo
     bar > EPSILON,
     `check "${name}": max_yes_probability ${check.max_yes_probability} with dead_band ` +
       `${deadBand} can only pass at P(true) <= ${bar.toFixed(2)}, which no answer reaches`,
+  );
+}
+
+/**
+ * Refuse a policy where nothing can decide anything.
+ *
+ * Every check set to `enforced: false` leaves no failing check to find and no
+ * ambiguous one either, so the gate returns READY for every Issue it is given.
+ * That is the one configuration that fails open, and it reads as a working
+ * policy right up until an Issue is admitted.
+ */
+function assertSomethingDecides(checks: Record<string, CheckPolicy>): void {
+  assert(
+    Object.values(checks).some((c) => c.enforced !== false),
+    'policy: at least one check must be enforced, or every Issue is admitted',
   );
 }
 
@@ -152,6 +174,7 @@ export function validatePolicy(raw: unknown): Policy {
     checks[name] = validateCheck(name, rawChecks[name]);
     assertReachable(name, checks[name] as CheckPolicy, p['dead_band'] as number);
   }
+  assertSomethingDecides(checks);
 
   return {
     version: 1,
@@ -242,6 +265,7 @@ export function mergePolicy(base: Policy, override: PolicyOverride | null): Poli
   for (const [name, check] of Object.entries(merged.checks)) {
     assertReachable(name, check, merged.dead_band);
   }
+  assertSomethingDecides(merged.checks);
 
   return merged;
 }

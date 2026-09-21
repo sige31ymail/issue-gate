@@ -54,6 +54,15 @@ export interface CheckPolicy {
   max_yes_probability?: number;
   /** Outcome contributed when this check fails. */
   outcome: FailureOutcome;
+  /**
+   * Whether this check's answer affects the verdict. Defaults to true.
+   *
+   * A check set to false is still asked, scored and recorded, but cannot change
+   * the outcome. That is how a question gets evidence before it is trusted with
+   * a decision: the alternative is to enforce it from the first run and find out
+   * afterwards whether it measured anything.
+   */
+  enforced?: boolean;
   /** The question put to Jev. */
   instructions: string;
   /** Optional descriptions of the true and false outcomes. */

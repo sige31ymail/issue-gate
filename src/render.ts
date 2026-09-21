@@ -16,6 +16,12 @@ export interface AuditContext {
   runUrl?: string;
   evaluatedAt: string;
   labelApplied: string | null;
+  /**
+   * 'shadow' means the verdict was recorded but not acted on: the Issue was
+   * admitted to the night queue whatever the gate decided. Defaults to
+   * 'enforce'.
+   */
+  mode?: 'enforce' | 'shadow';
 }
 
 /** The compact payload a later review pass aggregates across repositories. */
@@ -25,6 +31,10 @@ export interface AuditPayload {
   repository: string;
   issue_number: number;
   checks: Record<string, number | null>;
+  /** Checks that were scored but kept out of the verdict. */
+  recorded_only: string[];
+  /** 'shadow' when the verdict was recorded without being acted on. */
+  mode: 'enforce' | 'shadow';
   label_applied: string | null;
   policy_version: string;
   model: string | null;
@@ -44,6 +54,8 @@ export function buildPayload(decision: GateDecision, ctx: AuditContext): AuditPa
     repository: ctx.repository,
     issue_number: ctx.issueNumber,
     checks,
+    recorded_only: decision.checks.filter((c) => !c.enforced).map((c) => c.name),
+    mode: ctx.mode ?? 'enforce',
     label_applied: ctx.labelApplied,
     policy_version: ctx.policyVersion,
     model: ctx.model ?? null,
@@ -75,8 +87,11 @@ export function renderComment(decision: GateDecision, ctx: AuditContext): string
       '| --- | --- | --- | --- |',
     );
     for (const check of decision.checks) {
+      // A recorded-only row reads exactly like a decisive one otherwise, which
+      // would make the table look as though the gate ignored a failing check.
+      const name = check.enforced ? `\`${check.name}\`` : `\`${check.name}\` (recorded only)`;
       lines.push(
-        `| \`${check.name}\` | ${percent(check.probability)} | ${check.threshold} | ${check.status} |`,
+        `| ${name} | ${percent(check.probability)} | ${check.threshold} | ${check.status} |`,
       );
     }
     lines.push('');
@@ -88,9 +103,18 @@ export function renderComment(decision: GateDecision, ctx: AuditContext): string
     );
   }
 
+  lines.push(`**Final gate result: ${decision.outcome}**`, '');
+
+  if (ctx.mode === 'shadow') {
+    lines.push(
+      '> **Shadow mode: this verdict was not enforced.** The Issue was admitted to ' +
+        'the night queue regardless of the result above, so that the run\'s actual ' +
+        'outcome can be compared against what the gate predicted.',
+      '',
+    );
+  }
+
   lines.push(
-    `**Final gate result: ${decision.outcome}**`,
-    '',
     `- Label applied: ${ctx.labelApplied ? `\`${ctx.labelApplied}\`` : '_none_'}`,
     `- Policy version: \`${ctx.policyVersion}\``,
   );

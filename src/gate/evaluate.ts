@@ -18,6 +18,8 @@ export interface CheckResult {
   status: CheckStatus;
   /** Outcome this check contributes when it fails. */
   outcome: FailureOutcome;
+  /** False when the check was asked and scored but kept out of the verdict. */
+  enforced: boolean;
 }
 
 export interface GateDecision {
@@ -115,6 +117,9 @@ export function evaluate(
         threshold: describeThreshold(check, policy.dead_band),
         status: 'FAIL',
         outcome: 'HUMAN_REVIEW',
+        // A check kept out of the verdict stays out of it even with no answer:
+        // an unenforced question must not be able to fail the gate closed.
+        enforced: check.enforced !== false,
       });
       continue;
     }
@@ -125,10 +130,12 @@ export function evaluate(
       threshold: describeThreshold(check, policy.dead_band),
       status: classify(probability, check, policy.dead_band, policy.ambiguity_band),
       outcome: check.outcome,
+      enforced: check.enforced !== false,
     });
   }
 
-  const failed = checks.filter((c) => c.status === 'FAIL');
+  const enforced = checks.filter((c) => c.enforced);
+  const failed = enforced.filter((c) => c.status === 'FAIL');
   if (failed.length > 0) {
     // Several checks can fail at once; the most severe outcome wins so the label
     // reflects the biggest obstacle rather than whichever check ran first.
@@ -140,7 +147,7 @@ export function evaluate(
     return { outcome, checks };
   }
 
-  if (checks.some((c) => c.status === 'AMBIGUOUS')) {
+  if (enforced.some((c) => c.status === 'AMBIGUOUS')) {
     return { outcome: 'HUMAN_REVIEW', checks };
   }
 

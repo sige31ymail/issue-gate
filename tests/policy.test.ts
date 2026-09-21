@@ -291,3 +291,45 @@ describe('the shipped policy routes to a nameable repair', () => {
     expect(policy.ambiguity_band).toBeGreaterThan(0);
   });
 });
+
+describe('enforced', () => {
+  it('rejects a policy where every check is recorded only', () => {
+    // Nothing fails, nothing is ambiguous, so every Issue comes back READY.
+    // The one configuration that fails open.
+    const raw = clone(base);
+    (raw.checks.scope_small_enough as Record<string, unknown>)['enforced'] = false;
+    (raw.checks.dependency_blocked as Record<string, unknown>)['enforced'] = false;
+    expect(() => validatePolicy(raw)).toThrow(/at least one check must be enforced/);
+  });
+
+  it('rejects an override that turns off the last enforced check', () => {
+    const raw = clone(base);
+    (raw.checks.dependency_blocked as Record<string, unknown>)['enforced'] = false;
+    const policy = validatePolicy(raw);
+    expect(() =>
+      mergePolicy(policy, { checks: { scope_small_enough: { enforced: false } } }),
+    ).toThrow(/at least one check must be enforced/);
+  });
+
+  it('rejects a non-boolean enforced', () => {
+    const raw = clone(base);
+    (raw.checks.scope_small_enough as Record<string, unknown>)['enforced'] = 'no';
+    expect(() => validatePolicy(raw)).toThrow(PolicyError);
+  });
+
+  it('accepts an additional check that only records', () => {
+    const policy = validatePolicy(clone(base));
+    const merged = mergePolicy(policy, {
+      additional_checks: {
+        executor_can_handle: {
+          kind: 'noul',
+          min_yes_probability: 0.7,
+          outcome: 'HUMAN_REVIEW',
+          instructions: 'q',
+          enforced: false,
+        },
+      },
+    });
+    expect(merged.checks['executor_can_handle']?.enforced).toBe(false);
+  });
+});

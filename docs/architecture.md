@@ -107,6 +107,31 @@ to `NEEDS_DETAIL` or `NEEDS_SPLIT`. `HUMAN_REVIEW` is for the checks that
 genuinely need a person, plus every fail-closed path. An unsettled design
 decision is a detail the author can write down, so it moved to `NEEDS_DETAIL`.
 
+## Calibrating against real outcomes
+
+Thresholds set from a corpus of six recordings are bounded from one side only:
+the corpus contains no Issue that should have passed, so the numbers are known
+not to be too loose and unknown to be too tight. Closing that gap needs ground
+truth, and ground truth is whether the night run actually produced a usable PR.
+
+Collecting it has a sampling problem. An enforcing gate only ever lets through
+the Issues it already approved, so the outcomes observed are conditioned on the
+gate's own verdict and a false rejection never generates the evidence that would
+expose it. `mode: shadow` admits everything and records the verdict without
+acting on it, which makes the verdict a prediction that the run either confirms
+or refutes.
+
+Two limits are deliberate. Shadow mode waives the model's verdict but not a
+fail-closed one, so `allowed_authors` still holds: without that, anyone able to
+open an Issue could put text in front of an agent with write access. And it is
+only defensible while the night agent opens pull requests rather than merging
+them, which bounds the cost of a wrong admission to a closed PR.
+
+A question can also be recorded without being enforced (`enforced: false`). Its
+answers land in the audit payload under `recorded_only` and change nothing, so a
+new check can be measured against the ones that already work before it is given
+a vote.
+
 ## Replaying a corpus
 
 `evaluate` is pure and takes probabilities, not Issues, so a recorded answer can

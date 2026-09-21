@@ -40663,6 +40663,9 @@ function evaluate(policy, probabilities) {
                 threshold: describeThreshold(check, policy.dead_band),
                 status: 'FAIL',
                 outcome: 'HUMAN_REVIEW',
+                // A check kept out of the verdict stays out of it even with no answer:
+                // an unenforced question must not be able to fail the gate closed.
+                enforced: check.enforced !== false,
             });
             continue;
         }
@@ -40672,16 +40675,18 @@ function evaluate(policy, probabilities) {
             threshold: describeThreshold(check, policy.dead_band),
             status: classify(probability, check, policy.dead_band, policy.ambiguity_band),
             outcome: check.outcome,
+            enforced: check.enforced !== false,
         });
     }
-    const failed = checks.filter((c) => c.status === 'FAIL');
+    const enforced = checks.filter((c) => c.enforced);
+    const failed = enforced.filter((c) => c.status === 'FAIL');
     if (failed.length > 0) {
         // Several checks can fail at once; the most severe outcome wins so the label
         // reflects the biggest obstacle rather than whichever check ran first.
         const outcome = failed.reduce((worst, c) => OUTCOME_SEVERITY[c.outcome] > OUTCOME_SEVERITY[worst] ? c.outcome : worst, failed[0].outcome);
         return { outcome, checks };
     }
-    if (checks.some((c) => c.status === 'AMBIGUOUS')) {
+    if (enforced.some((c) => c.status === 'AMBIGUOUS')) {
         return { outcome: 'HUMAN_REVIEW', checks };
     }
     return { outcome: 'READY', checks };
@@ -40742,6 +40747,8 @@ function buildPayload(decision, ctx) {
         repository: ctx.repository,
         issue_number: ctx.issueNumber,
         checks,
+        recorded_only: decision.checks.filter((c) => !c.enforced).map((c) => c.name),
+        mode: ctx.mode ?? 'enforce',
         label_applied: ctx.labelApplied,
         policy_version: ctx.policyVersion,
         model: ctx.model ?? null,
@@ -40761,14 +40768,23 @@ function renderComment(decision, ctx) {
     if (decision.checks.length > 0) {
         lines.push('| Check | P(true) | Threshold | Result |', '| --- | --- | --- | --- |');
         for (const check of decision.checks) {
-            lines.push(`| \`${check.name}\` | ${percent(check.probability)} | ${check.threshold} | ${check.status} |`);
+            // A recorded-only row reads exactly like a decisive one otherwise, which
+            // would make the table look as though the gate ignored a failing check.
+            const name = check.enforced ? `\`${check.name}\`` : `\`${check.name}\` (recorded only)`;
+            lines.push(`| ${name} | ${percent(check.probability)} | ${check.threshold} | ${check.status} |`);
         }
         lines.push('');
         lines.push('_Probabilities are P(true) as returned by the model — the probability that ' +
             'the check\'s statement holds. They route the decision; they are not a ' +
             'measure of how often the gate is correct._', '');
     }
-    lines.push(`**Final gate result: ${decision.outcome}**`, '', `- Label applied: ${ctx.labelApplied ? `\`${ctx.labelApplied}\`` : '_none_'}`, `- Policy version: \`${ctx.policyVersion}\``);
+    lines.push(`**Final gate result: ${decision.outcome}**`, '');
+    if (ctx.mode === 'shadow') {
+        lines.push('> **Shadow mode: this verdict was not enforced.** The Issue was admitted to ' +
+            'the night queue regardless of the result above, so that the run\'s actual ' +
+            'outcome can be compared against what the gate predicted.', '');
+    }
+    lines.push(`- Label applied: ${ctx.labelApplied ? `\`${ctx.labelApplied}\`` : '_none_'}`, `- Policy version: \`${ctx.policyVersion}\``);
     if (ctx.model)
         lines.push(`- Model: \`${ctx.model}\``);
     if (ctx.runUrl)
@@ -41745,11 +41761,15 @@ function validateCheck(name, check) {
     if (criteria !== undefined && criteria !== null) {
         assert(typeof criteria === 'object', `check "${name}": criteria must be a mapping`);
     }
+    const enforced = c['enforced'];
+    assert(enforced === undefined || typeof enforced === 'boolean', `check "${name}": enforced must be true or false`);
     const result = {
         kind: 'noul',
         outcome: c['outcome'],
         instructions: c['instructions'],
     };
+    if (enforced === false)
+        result.enforced = false;
     if (hasMin)
         result.min_yes_probability = c['min_yes_probability'];
     if (hasMax)
@@ -41781,6 +41801,17 @@ function assertReachable(name, check, deadBand) {
     assert(bar > load_EPSILON, `check "${name}": max_yes_probability ${check.max_yes_probability} with dead_band ` +
         `${deadBand} can only pass at P(true) <= ${bar.toFixed(2)}, which no answer reaches`);
 }
+/**
+ * Refuse a policy where nothing can decide anything.
+ *
+ * Every check set to `enforced: false` leaves no failing check to find and no
+ * ambiguous one either, so the gate returns READY for every Issue it is given.
+ * That is the one configuration that fails open, and it reads as a working
+ * policy right up until an Issue is admitted.
+ */
+function assertSomethingDecides(checks) {
+    assert(Object.values(checks).some((c) => c.enforced !== false), 'policy: at least one check must be enforced, or every Issue is admitted');
+}
 /** Validate a parsed base policy, filling in nothing — every field is explicit in YAML. */
 function validatePolicy(raw) {
     assert(raw && typeof raw === 'object', 'policy must be a mapping');
@@ -41809,6 +41840,7 @@ function validatePolicy(raw) {
         checks[name] = validateCheck(name, rawChecks[name]);
         assertReachable(name, checks[name], p['dead_band']);
     }
+    assertSomethingDecides(checks);
     return {
         version: 1,
         gate: p['gate'],
@@ -41881,6 +41913,7 @@ function mergePolicy(base, override) {
     for (const [name, check] of Object.entries(merged.checks)) {
         assertReachable(name, check, merged.dead_band);
     }
+    assertSomethingDecides(merged.checks);
     return merged;
 }
 async function loadPolicyFile(path) {
@@ -41939,6 +41972,7 @@ function readInputs() {
         policyPath: core.getInput('policy') || actionPath('policies', 'night-ready.yml'),
         overridePath: core.getInput('override-path') || '.github/issue-gate.yml',
         model: core.getInput('model'),
+        mode: core.getInput('mode') === 'shadow' ? 'shadow' : 'enforce',
         dryRun: core.getBooleanInput('dry-run'),
     };
 }
@@ -41989,7 +42023,18 @@ async function run() {
             decision = failClosed(error.message);
         }
     }
-    const labels = desiredLabels(policy, decision);
+    // Shadow mode admits every Issue the gate actually judged, so the night run's
+    // real outcome can be set against the gate's prediction. Without it the only
+    // Issues ever executed are the ones the gate already liked, and a false
+    // rejection stays invisible.
+    //
+    // It overrides the model's verdict, never a fail-closed one. Those come from
+    // the deterministic checks that run before Jev — an author outside
+    // allowed_authors above all — and admitting on one would let anyone who can
+    // open an Issue put text in front of an agent holding write access. A gate
+    // that could not reach a verdict has not produced a prediction to test.
+    const shadowAdmits = inputs.mode === 'shadow' && decision.error === undefined;
+    const labels = shadowAdmits ? [policy.labels.night_ready] : desiredLabels(policy, decision);
     // Every outcome carries a label, READY included. Reporting only the READY
     // label left the audit record claiming "none" on an Issue that had just been
     // labelled human-review.
@@ -42002,8 +42047,19 @@ async function run() {
         runUrl: `${lib_github.context.serverUrl}/${repository}/actions/runs/${lib_github.context.runId}`,
         evaluatedAt: new Date().toISOString(),
         labelApplied,
+        // Reported as shadow only when shadow actually decided the label, so the
+        // comment never claims a verdict was waived that in fact was applied.
+        mode: shadowAdmits ? 'shadow' : 'enforce',
     };
     const comment = renderComment(decision, auditContext);
+    if (shadowAdmits) {
+        core.warning(`shadow mode: verdict ${decision.outcome} was recorded but not enforced; ` +
+            `#${issue.number} was admitted to the night queue`);
+    }
+    else if (inputs.mode === 'shadow') {
+        core.warning(`shadow mode: #${issue.number} was not admitted, because the gate could ` +
+            `not reach a verdict (${decision.error})`);
+    }
     if (inputs.dryRun) {
         core.info('dry-run: no labels or comments were written');
         core.info(comment);

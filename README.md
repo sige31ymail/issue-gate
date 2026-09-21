@@ -58,6 +58,32 @@ So a check whose failure the Issue's author can fix maps to `NEEDS_DETAIL` or
 `NEEDS_SPLIT`, and `HUMAN_REVIEW` is reserved for the ones that genuinely need a
 person — today, only `safe_for_unattended_execution` and the fail-closed paths.
 
+### Recording a check before trusting it
+
+A check with `enforced: false` is asked, scored and written into the audit
+record, but cannot change the verdict. That is how a new question earns its
+place: run it alongside the ones that decide, see whether its answers correlate
+with anything, and only then give it a vote. Enforcing a question from its first
+run means discovering afterwards whether it measured anything.
+
+A policy where every check is unenforced is rejected at load time — nothing
+would fail, so every Issue would come back `READY`.
+
+### Shadow mode
+
+`mode: shadow` records the verdict and admits the Issue to the night queue
+anyway. It exists for one purpose: while the gate is enforcing, the only Issues
+that ever run are the ones it already liked, so a wrongly rejected Issue never
+produces the evidence that would show the rejection was wrong. Shadow mode
+removes that blind spot, and the audit comment still states what the gate would
+have decided, which is what a later calibration pass compares against.
+
+It waives the model's verdict, never a fail-closed one. An Issue that could not
+be judged — an author outside `allowed_authors`, a closed or empty Issue, Jev
+unreachable, a malformed policy — is not admitted, because admitting on the
+author check would let anyone who can open an Issue put text in front of an
+agent that holds write access.
+
 ### Tuning thresholds
 
 `evaluate` is pure, so a probability recorded once can be scored against any

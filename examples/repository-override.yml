@@ -1,0 +1,28 @@
+# Optional. Place in a target repository as .github/issue-gate.yml
+#
+# Overrides stay small: retune a threshold, or add a check this repository needs.
+# The shared policy supplies everything else, and a repository cannot delete a
+# shared check.
+
+dead_band: 0.05
+
+checks:
+  # This repository's changes are riskier, so demand more margin.
+  safe_for_unattended_execution:
+    min_yes_probability: 0.97
+
+additional_checks:
+  ui_verification_defined:
+    kind: noul
+    min_yes_probability: 0.90
+    outcome: NEEDS_DETAIL
+    instructions: >-
+      If this Issue changes user-visible UI, does it describe a way to verify
+      the result — a Playwright test, a screenshot check, or a stated manual
+      verification step?
+    criteria:
+      true: >-
+        A UI verification method is described, or the Issue does not touch UI.
+      false: >-
+        The Issue changes UI but says nothing about how to confirm it looks and
+        behaves correctly.

@@ -265,3 +265,29 @@ describe('the shipped policy', () => {
     expect(new Set(managedLabels(policy.labels)).size).toBe(5);
   });
 });
+
+describe('the shipped policy routes to a nameable repair', () => {
+  const load = () =>
+    loadPolicyFile(new URL('../policies/night-ready.yml', import.meta.url).pathname);
+
+  it('reserves human-review for checks a person must actually settle', async () => {
+    // Four failure labels exist; two of them only appear when no check mapped to
+    // HUMAN_REVIEW fails. A quality check sitting on HUMAN_REVIEW therefore
+    // silences them, which is what requires_human_decision used to do.
+    const policy = await load();
+    const humanReview = Object.entries(policy.checks)
+      .filter(([, c]) => c.outcome === 'HUMAN_REVIEW')
+      .map(([name]) => name);
+    expect(humanReview).toEqual(['safe_for_unattended_execution']);
+  });
+
+  it('states thresholds as the value an answer must reach', async () => {
+    const policy = await load();
+    expect(policy.dead_band).toBe(0);
+  });
+
+  it('treats answers near a coin flip as carrying no signal', async () => {
+    const policy = await load();
+    expect(policy.ambiguity_band).toBeGreaterThan(0);
+  });
+});

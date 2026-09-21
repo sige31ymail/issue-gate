@@ -59,11 +59,25 @@ function describeThreshold(check: CheckPolicy, deadBand: number): string {
  * that the model is undecided — and an undecided check must never be the reason
  * an Issue reaches unattended execution.
  */
+/**
+ * Is this answer too close to a coin flip to mean anything?
+ *
+ * Independent of the threshold: an answer of 0.5 carries no information wherever
+ * the bar sits, and an answer of 0.93 is confident whether or not it clears one.
+ */
+export function isUndecided(probability: number, ambiguityBand: number): boolean {
+  if (ambiguityBand <= 0) return false;
+  return Math.abs(probability - 0.5) < ambiguityBand - EPSILON;
+}
+
 export function classify(
   probability: number,
   check: CheckPolicy,
   deadBand: number,
+  ambiguityBand = 0,
 ): CheckStatus {
+  if (isUndecided(probability, ambiguityBand)) return 'AMBIGUOUS';
+
   if (check.min_yes_probability !== undefined) {
     const threshold = check.min_yes_probability;
     if (probability >= threshold + deadBand - EPSILON) return 'PASS';
@@ -109,7 +123,7 @@ export function evaluate(
       name,
       probability,
       threshold: describeThreshold(check, policy.dead_band),
-      status: classify(probability, check, policy.dead_band),
+      status: classify(probability, check, policy.dead_band, policy.ambiguity_band),
       outcome: check.outcome,
     });
   }

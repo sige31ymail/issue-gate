@@ -40546,6 +40546,13 @@ const FAILURE_OUTCOMES = [
  * BLOCKED wins because a blocked Issue cannot be worked on at all; HUMAN_REVIEW
  * outranks the two "rewrite the Issue" outcomes because it needs a person rather
  * than a better description.
+ *
+ * That ranking only routes usefully while HUMAN_REVIEW stays rare. The first
+ * corpus had a quality check mapped to it that failed on every feature Issue,
+ * which pinned the result at HUMAN_REVIEW and made NEEDS_SPLIT and NEEDS_DETAIL
+ * unreachable: four labels were defined and two could ever appear. A check whose
+ * failure the Issue's author can fix belongs on NEEDS_DETAIL or NEEDS_SPLIT, and
+ * HUMAN_REVIEW is reserved for the ones that genuinely need a person.
  */
 const OUTCOME_SEVERITY = {
     BLOCKED: 4,
@@ -40608,7 +40615,20 @@ function describeThreshold(check, deadBand) {
  * that the model is undecided — and an undecided check must never be the reason
  * an Issue reaches unattended execution.
  */
-function classify(probability, check, deadBand) {
+/**
+ * Is this answer too close to a coin flip to mean anything?
+ *
+ * Independent of the threshold: an answer of 0.5 carries no information wherever
+ * the bar sits, and an answer of 0.93 is confident whether or not it clears one.
+ */
+function isUndecided(probability, ambiguityBand) {
+    if (ambiguityBand <= 0)
+        return false;
+    return Math.abs(probability - 0.5) < ambiguityBand - EPSILON;
+}
+function classify(probability, check, deadBand, ambiguityBand = 0) {
+    if (isUndecided(probability, ambiguityBand))
+        return 'AMBIGUOUS';
     if (check.min_yes_probability !== undefined) {
         const threshold = check.min_yes_probability;
         if (probability >= threshold + deadBand - EPSILON)
@@ -40650,7 +40670,7 @@ function evaluate(policy, probabilities) {
             name,
             probability,
             threshold: describeThreshold(check, policy.dead_band),
-            status: classify(probability, check, policy.dead_band),
+            status: classify(probability, check, policy.dead_band, policy.ambiguity_band),
             outcome: check.outcome,
         });
     }
@@ -41768,6 +41788,10 @@ function validatePolicy(raw) {
     assert(p['version'] === 1, 'policy: only version 1 is supported');
     assert(typeof p['gate'] === 'string', 'policy: gate must be a string');
     assert(isProbability(p['dead_band']), 'policy: dead_band must be between 0 and 1');
+    // Absent means no undecided band, which is how a policy written before the
+    // field existed behaves.
+    const ambiguityBand = p['ambiguity_band'] ?? 0;
+    assert(isProbability(ambiguityBand), 'policy: ambiguity_band must be between 0 and 1');
     assert(typeof p['max_issue_chars'] === 'number' && p['max_issue_chars'] > 0, 'policy: max_issue_chars must be a positive number');
     const authors = p['allowed_authors'] ?? [];
     assert(Array.isArray(authors) && authors.every((a) => typeof a === 'string'), 'policy: allowed_authors must be a list of strings');
@@ -41796,6 +41820,7 @@ function validatePolicy(raw) {
             blocked: labels['blocked'],
         },
         dead_band: p['dead_band'],
+        ambiguity_band: ambiguityBand,
         allowed_authors: authors,
         max_issue_chars: p['max_issue_chars'],
         checks,
@@ -41819,6 +41844,10 @@ function mergePolicy(base, override) {
     if (override.dead_band !== undefined) {
         assert(isProbability(override.dead_band), 'override: dead_band must be between 0 and 1');
         merged.dead_band = override.dead_band;
+    }
+    if (override.ambiguity_band !== undefined) {
+        assert(isProbability(override.ambiguity_band), 'override: ambiguity_band must be between 0 and 1');
+        merged.ambiguity_band = override.ambiguity_band;
     }
     if (override.allowed_authors !== undefined) {
         assert(Array.isArray(override.allowed_authors) &&

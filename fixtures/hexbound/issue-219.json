@@ -1,0 +1,20 @@
+{
+  "gate_version": 1,
+  "result": "BLOCKED",
+  "repository": "sige31ymail/hexbound",
+  "issue_number": 219,
+  "checks": {
+    "scope_small_enough": 0.31,
+    "acceptance_criteria_clear": 0.93,
+    "acceptance_criteria_verifiable": 0.9,
+    "requires_human_decision": 0.27,
+    "dependency_blocked": 0.83,
+    "safe_for_unattended_execution": 0.77
+  },
+  "label_applied": "blocked",
+  "policy_version": "v1",
+  "model": "jev-1.13.0",
+  "run_url": "https://github.com/sige31ymail/hexbound/actions/runs/35589687728",
+  "evaluated_at": "2026-09-21T10:37:05.422Z",
+  "error": null
+}

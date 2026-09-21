@@ -29,6 +29,7 @@ const policy: Policy = {
     blocked: 'blocked',
   },
   dead_band: 0.05,
+  ambiguity_band: 0,
   allowed_authors: [],
   max_issue_chars: 12000,
   checks,

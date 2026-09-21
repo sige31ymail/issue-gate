@@ -115,6 +115,13 @@ export function validatePolicy(raw: unknown): Policy {
     isProbability(p['dead_band']),
     'policy: dead_band must be between 0 and 1',
   );
+  // Absent means no undecided band, which is how a policy written before the
+  // field existed behaves.
+  const ambiguityBand = p['ambiguity_band'] ?? 0;
+  assert(
+    isProbability(ambiguityBand),
+    'policy: ambiguity_band must be between 0 and 1',
+  );
   assert(
     typeof p['max_issue_chars'] === 'number' && p['max_issue_chars'] > 0,
     'policy: max_issue_chars must be a positive number',
@@ -157,6 +164,7 @@ export function validatePolicy(raw: unknown): Policy {
       blocked: labels['blocked'] as string,
     },
     dead_band: p['dead_band'] as number,
+    ambiguity_band: ambiguityBand as number,
     allowed_authors: authors as string[],
     max_issue_chars: p['max_issue_chars'] as number,
     checks,
@@ -182,6 +190,13 @@ export function mergePolicy(base: Policy, override: PolicyOverride | null): Poli
   if (override.dead_band !== undefined) {
     assert(isProbability(override.dead_band), 'override: dead_band must be between 0 and 1');
     merged.dead_band = override.dead_band;
+  }
+  if (override.ambiguity_band !== undefined) {
+    assert(
+      isProbability(override.ambiguity_band),
+      'override: ambiguity_band must be between 0 and 1',
+    );
+    merged.ambiguity_band = override.ambiguity_band;
   }
   if (override.allowed_authors !== undefined) {
     assert(

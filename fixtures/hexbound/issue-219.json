@@ -5,16 +5,23 @@
   "issue_number": 219,
   "checks": {
     "scope_small_enough": 0.31,
-    "acceptance_criteria_clear": 0.93,
+    "acceptance_criteria_clear": 0.94,
     "acceptance_criteria_verifiable": 0.9,
-    "requires_human_decision": 0.27,
+    "requires_human_decision": 0.28,
     "dependency_blocked": 0.83,
-    "safe_for_unattended_execution": 0.77
+    "safe_for_unattended_execution": 0.79,
+    "failure_is_caught_by_checks": 0.37,
+    "change_is_localized": 0.95,
+    "executor_can_handle": 0.26
   },
-  "label_applied": "blocked",
+  "recorded_only": [
+    "executor_can_handle"
+  ],
+  "mode": "shadow",
+  "label_applied": "night-queue",
   "policy_version": "v1",
   "model": "jev-1.13.0",
-  "run_url": "https://github.com/sige31ymail/hexbound/actions/runs/35589687728",
-  "evaluated_at": "2026-09-21T10:37:05.422Z",
+  "run_url": null,
+  "evaluated_at": "2026-09-21T11:37:00.000Z",
   "error": null
 }

@@ -6,15 +6,22 @@
   "checks": {
     "scope_small_enough": 0.81,
     "acceptance_criteria_clear": 0.64,
-    "acceptance_criteria_verifiable": 0.53,
-    "requires_human_decision": 0.61,
+    "acceptance_criteria_verifiable": 0.51,
+    "requires_human_decision": 0.58,
     "dependency_blocked": 0.05,
-    "safe_for_unattended_execution": 0.93
+    "safe_for_unattended_execution": 0.93,
+    "failure_is_caught_by_checks": 0.19,
+    "change_is_localized": 0.97,
+    "executor_can_handle": 0.7
   },
-  "label_applied": "human-review",
+  "recorded_only": [
+    "executor_can_handle"
+  ],
+  "mode": "shadow",
+  "label_applied": "night-queue",
   "policy_version": "v1",
   "model": "jev-1.13.0",
-  "run_url": "https://github.com/sige31ymail/hexbound/actions/runs/35588349495",
-  "evaluated_at": "2026-09-21T10:22:03.975Z",
+  "run_url": null,
+  "evaluated_at": "2026-09-21T11:37:00.000Z",
   "error": null
 }

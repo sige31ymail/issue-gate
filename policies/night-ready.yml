@@ -50,9 +50,39 @@ allowed_authors:
 # Issue bodies are truncated to this many characters before reaching Jev.
 max_issue_chars: 12000
 
+# Only dependency_blocked decides.
+#
+# Nine Issues were run through the night queue on 2026-09-21 with the gate in
+# shadow mode, and the verdicts were set against what actually happened: six
+# produced a pull request, three did not. Of the nine checks here, exactly one
+# predicted anything.
+#
+# dependency_blocked found the real chain. The two Issues that failed waiting on
+# unmerged work scored 0.75 and 0.83; every other Issue in the set, including
+# the third failure, scored 0.24 or below.
+#
+# The rest carried no signal, and two ran backwards. requires_human_decision
+# averaged 0.60 across the Issues that succeeded and 0.35 across the ones that
+# failed, so its bar refuses the wrong half. The two acceptance-criteria checks
+# scored the three failures at 0.93-0.95 and 0.89-0.93, their highest marks in
+# the set: the best-specified Issues were the ones that did not get done.
+# scope_small_enough overlaps completely, and gave its lowest score of all, 0.11,
+# to an Issue that finished.
+#
+# So the rest are recorded, not enforced. They keep being asked and keep landing
+# in the audit payload, and any of them earns a vote the moment its answers
+# start tracking outcomes. Enforcing them now means refusing real work on the
+# strength of numbers that have been measured and found not to mean anything —
+# which is how the previous policy came to refuse six Issues that went on to
+# produce pull requests.
+#
+# See fixtures/hexbound/outcomes.json, and replay with --outcomes.
 checks:
   scope_small_enough:
     kind: noul
+    # Corpus: 0.11-0.81 across Issues that succeeded, 0.30-0.51 across ones
+    # that failed. Complete overlap, and its lowest score went to a success.
+    enforced: false
     # Corpus: 0.29-0.38 for multi-system features, 0.60-0.81 for single changes.
     min_yes_probability: 0.70
     outcome: NEEDS_SPLIT
@@ -69,6 +99,9 @@ checks:
 
   acceptance_criteria_clear:
     kind: noul
+    # Corpus: 0.93-0.95 on all three Issues that failed, its highest marks in
+    # the set. Inverted.
+    enforced: false
     # Corpus: 0.64-0.80 where the Issue has no completion section, 0.92-0.95
     # where it lists concrete criteria. The cleanest separation of the six.
     min_yes_probability: 0.70
@@ -85,6 +118,9 @@ checks:
 
   acceptance_criteria_verifiable:
     kind: noul
+    # Corpus: 0.89-0.93 on the three failures. Tracks the check above, and is
+    # inverted the same way.
+    enforced: false
     # Corpus: 0.52-0.78 against 0.89-0.93. Tracks the check above but runs lower
     # on visual work, where objective verification is genuinely harder.
     min_yes_probability: 0.70
@@ -102,6 +138,9 @@ checks:
 
   requires_human_decision:
     kind: noul
+    # Corpus: averaged 0.60 across successes and 0.35 across failures, so the
+    # max bar refuses the wrong half. Inverted.
+    enforced: false
     # Corpus: 0.25-0.27 for Issues that settle their own approach, 0.55-0.76 for
     # the ones that leave it open. The check discriminates; the original 0.10
     # simply sat below everything it measured.
@@ -126,7 +165,7 @@ checks:
     # Corpus: 0.05-0.24 for independent Issues, 0.75-0.83 for two that genuinely
     # wait on a third. The check found a real dependency chain, and the gap
     # between the two groups is wide enough that the line's exact place is not
-    # delicate.
+    # delicate. The one check here whose answers tracked outcomes.
     max_yes_probability: 0.35
     outcome: BLOCKED
     instructions: >-
@@ -141,6 +180,12 @@ checks:
 
   safe_for_unattended_execution:
     kind: noul
+    # Corpus: 0.59-0.93 across nine changes that were all equally safe, and
+    # 0.81 mean on the successes against 0.80 on the failures. It separates
+    # nothing.
+    # allowed_authors, which runs before Jev, is the control that actually
+    # holds here.
+    enforced: false
     # PROVISIONAL, and the loosest number here on purpose.
     #
     # Across six Issues this check returned 0.71-0.93 while every one of them was

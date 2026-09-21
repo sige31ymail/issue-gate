@@ -29,6 +29,7 @@ const policy: Policy = {
     blocked: 'blocked',
   },
   dead_band: 0.05,
+  ambiguity_band: 0,
   allowed_authors: [],
   max_issue_chars: 12000,
   checks,
@@ -129,5 +130,80 @@ describe('buildPayload', () => {
     const json = comment.match(/```json\n([\s\S]*?)\n```/)?.[1];
     expect(json).toBeDefined();
     expect(JSON.parse(json as string)).toEqual(buildPayload(decision, ctx));
+  });
+});
+
+describe('shadow mode in the audit record', () => {
+  const decision = () =>
+    evaluate(policy, { scope_small_enough: 0.2, requires_human_decision: 0.9 });
+
+  it('says plainly that the verdict was not acted on', () => {
+    const comment = renderComment(decision(), {
+      ...ctx,
+      mode: 'shadow',
+      labelApplied: 'night-ready',
+    });
+    expect(comment).toContain('not enforced');
+    // The verdict is still stated, because comparing it against what the run
+    // actually did is the whole point of recording it.
+    expect(comment).toContain('**Final gate result: HUMAN_REVIEW**');
+    expect(comment).toContain('Label applied: `night-ready`');
+  });
+
+  it('is absent from an enforcing run', () => {
+    expect(renderComment(decision(), ctx)).not.toContain('not enforced');
+  });
+
+  it('records the mode and the label that was really written', () => {
+    const payload = buildPayload(decision(), {
+      ...ctx,
+      mode: 'shadow',
+      labelApplied: 'night-ready',
+    });
+    expect(payload.mode).toBe('shadow');
+    expect(payload.result).toBe('HUMAN_REVIEW');
+    expect(payload.label_applied).toBe('night-ready');
+  });
+
+  it('defaults to enforce when the mode is not given', () => {
+    expect(buildPayload(decision(), ctx).mode).toBe('enforce');
+  });
+});
+
+describe('recorded-only checks in the comment', () => {
+  const withRecorded: Policy = {
+    ...policy,
+    checks: {
+      ...checks,
+      executor_can_handle: {
+        kind: 'noul',
+        min_yes_probability: 0.7,
+        outcome: 'HUMAN_REVIEW',
+        instructions: 'q',
+        enforced: false,
+      },
+    },
+  };
+
+  it('marks the row so a failing one does not read as ignored', () => {
+    const decision = evaluate(withRecorded, {
+      scope_small_enough: 0.97,
+      requires_human_decision: 0.02,
+      executor_can_handle: 0.1,
+    });
+    const comment = renderComment(decision, ctx);
+    expect(comment).toContain('`executor_can_handle` (recorded only)');
+    expect(comment).toContain('**Final gate result: READY**');
+  });
+
+  it('names them in the payload', () => {
+    const decision = evaluate(withRecorded, {
+      scope_small_enough: 0.97,
+      requires_human_decision: 0.02,
+      executor_can_handle: 0.1,
+    });
+    const payload = buildPayload(decision, ctx);
+    expect(payload.recorded_only).toEqual(['executor_can_handle']);
+    expect(payload.checks['executor_can_handle']).toBe(0.1);
   });
 });

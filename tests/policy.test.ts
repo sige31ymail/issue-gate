@@ -265,3 +265,71 @@ describe('the shipped policy', () => {
     expect(new Set(managedLabels(policy.labels)).size).toBe(5);
   });
 });
+
+describe('the shipped policy routes to a nameable repair', () => {
+  const load = () =>
+    loadPolicyFile(new URL('../policies/night-ready.yml', import.meta.url).pathname);
+
+  it('reserves human-review for checks a person must actually settle', async () => {
+    // Four failure labels exist; two of them only appear when no check mapped to
+    // HUMAN_REVIEW fails. A quality check sitting on HUMAN_REVIEW therefore
+    // silences them, which is what requires_human_decision used to do.
+    const policy = await load();
+    const humanReview = Object.entries(policy.checks)
+      .filter(([, c]) => c.outcome === 'HUMAN_REVIEW')
+      .map(([name]) => name);
+    expect(humanReview).toEqual(['safe_for_unattended_execution']);
+  });
+
+  it('states thresholds as the value an answer must reach', async () => {
+    const policy = await load();
+    expect(policy.dead_band).toBe(0);
+  });
+
+  it('treats answers near a coin flip as carrying no signal', async () => {
+    const policy = await load();
+    expect(policy.ambiguity_band).toBeGreaterThan(0);
+  });
+});
+
+describe('enforced', () => {
+  it('rejects a policy where every check is recorded only', () => {
+    // Nothing fails, nothing is ambiguous, so every Issue comes back READY.
+    // The one configuration that fails open.
+    const raw = clone(base);
+    (raw.checks.scope_small_enough as Record<string, unknown>)['enforced'] = false;
+    (raw.checks.dependency_blocked as Record<string, unknown>)['enforced'] = false;
+    expect(() => validatePolicy(raw)).toThrow(/at least one check must be enforced/);
+  });
+
+  it('rejects an override that turns off the last enforced check', () => {
+    const raw = clone(base);
+    (raw.checks.dependency_blocked as Record<string, unknown>)['enforced'] = false;
+    const policy = validatePolicy(raw);
+    expect(() =>
+      mergePolicy(policy, { checks: { scope_small_enough: { enforced: false } } }),
+    ).toThrow(/at least one check must be enforced/);
+  });
+
+  it('rejects a non-boolean enforced', () => {
+    const raw = clone(base);
+    (raw.checks.scope_small_enough as Record<string, unknown>)['enforced'] = 'no';
+    expect(() => validatePolicy(raw)).toThrow(PolicyError);
+  });
+
+  it('accepts an additional check that only records', () => {
+    const policy = validatePolicy(clone(base));
+    const merged = mergePolicy(policy, {
+      additional_checks: {
+        executor_can_handle: {
+          kind: 'noul',
+          min_yes_probability: 0.7,
+          outcome: 'HUMAN_REVIEW',
+          instructions: 'q',
+          enforced: false,
+        },
+      },
+    });
+    expect(merged.checks['executor_can_handle']?.enforced).toBe(false);
+  });
+});

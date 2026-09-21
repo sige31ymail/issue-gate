@@ -27,6 +27,13 @@ inputs:
   model:
     description: 'Jev model override. Defaults to the SDK default (jev-latest).'
     required: false
+  mode:
+    description: >-
+      "enforce" (default) acts on the verdict. "shadow" records the verdict but
+      admits every Issue to the night queue regardless, so a run's real outcome
+      can be compared against what the gate predicted. Calibration only.
+    required: false
+    default: 'enforce'
   dry-run:
     description: 'Evaluate and log the result without writing labels or comments.'
     required: false
@@ -36,9 +43,9 @@ outputs:
   result:
     description: 'READY, NEEDS_DETAIL, NEEDS_SPLIT, HUMAN_REVIEW, or BLOCKED.'
   label-applied:
-    description: 'The label this run put on the Issue. Use the ready output to branch on the verdict.'
+    description: 'The label this run put on the Issue. In shadow mode this is the night-queue label whatever the verdict was.'
   ready:
-    description: '"true" when the Issue was admitted to the night queue.'
+    description: '"true" when the gate''s verdict was READY. Read label-applied to see what was actually written.'
 
 runs:
   using: 'node20'

@@ -5,6 +5,7 @@ import {
   evaluate,
   failClosed,
   isAuthorAllowed,
+  isUndecided,
 } from '../src/gate/evaluate.js';
 import type { CheckPolicy, Policy } from '../src/policy/types.js';
 
@@ -16,12 +17,17 @@ const labels = {
   blocked: 'blocked',
 };
 
-function policy(checks: Record<string, CheckPolicy>, deadBand = 0.05): Policy {
+function policy(
+  checks: Record<string, CheckPolicy>,
+  deadBand = 0.05,
+  ambiguityBand = 0,
+): Policy {
   return {
     version: 1,
     gate: 'night-ready',
     labels,
     dead_band: deadBand,
+    ambiguity_band: ambiguityBand,
     allowed_authors: [],
     max_issue_chars: 12000,
     checks,
@@ -209,5 +215,94 @@ describe('desiredLabels', () => {
   it('uses the night-queue label only for READY', () => {
     expect(desiredLabels(p, { outcome: 'READY', checks: [] })).toEqual(['night-ready']);
     expect(desiredLabels(p, { outcome: 'BLOCKED', checks: [] })).toEqual(['blocked']);
+  });
+});
+
+describe('isUndecided', () => {
+  it('catches an answer near the middle wherever the threshold sits', () => {
+    expect(isUndecided(0.5, 0.1)).toBe(true);
+    expect(isUndecided(0.45, 0.1)).toBe(true);
+    expect(isUndecided(0.55, 0.1)).toBe(true);
+  });
+
+  it('does not call a confident answer undecided just because it missed a bar', () => {
+    // The fault in the previous design: 0.93 against a 0.95 threshold is a
+    // confident yes that falls short, not a model on the fence.
+    expect(isUndecided(0.93, 0.1)).toBe(false);
+    expect(isUndecided(0.07, 0.1)).toBe(false);
+  });
+
+  it('is off when the band is zero', () => {
+    expect(isUndecided(0.5, 0)).toBe(false);
+  });
+});
+
+describe('ambiguity and failure together', () => {
+  const undecided: CheckPolicy = {
+    kind: 'noul',
+    min_yes_probability: 0.7,
+    outcome: 'NEEDS_DETAIL',
+    instructions: 'q',
+  };
+  const split: CheckPolicy = {
+    kind: 'noul',
+    min_yes_probability: 0.7,
+    outcome: 'NEEDS_SPLIT',
+    instructions: 'q',
+  };
+
+  it('never lets an undecided check outrank a check that named a problem', () => {
+    // An undecided answer alone means HUMAN_REVIEW, but an Issue with a concrete
+    // failure is told what the failure is.
+    const p = policy({ a: undecided, b: split }, 0, 0.1);
+    const decision = evaluate(p, { a: 0.52, b: 0.3 });
+    expect(decision.outcome).toBe('NEEDS_SPLIT');
+  });
+
+  it('falls back to human review when the only problem is an undecided answer', () => {
+    const p = policy({ a: undecided, b: split }, 0, 0.1);
+    expect(evaluate(p, { a: 0.52, b: 0.95 }).outcome).toBe('HUMAN_REVIEW');
+  });
+});
+
+describe('recorded-only checks', () => {
+  const decisive: CheckPolicy = {
+    kind: 'noul',
+    min_yes_probability: 0.7,
+    outcome: 'NEEDS_SPLIT',
+    instructions: 'q',
+  };
+  const recorded: CheckPolicy = {
+    kind: 'noul',
+    min_yes_probability: 0.7,
+    outcome: 'BLOCKED',
+    instructions: 'q',
+    enforced: false,
+  };
+
+  it('scores an unenforced check without letting it change the verdict', () => {
+    // Its outcome is the most severe one there is, so if it counted it would win.
+    const decision = evaluate(policy({ a: decisive, b: recorded }, 0), { a: 0.9, b: 0.1 });
+    expect(decision.outcome).toBe('READY');
+    expect(decision.checks.find((c) => c.name === 'b')?.status).toBe('FAIL');
+    expect(decision.checks.find((c) => c.name === 'b')?.probability).toBe(0.1);
+  });
+
+  it('keeps it out of the verdict when it is ambiguous too', () => {
+    const decision = evaluate(policy({ a: decisive, b: recorded }, 0, 0.1), { a: 0.9, b: 0.5 });
+    expect(decision.outcome).toBe('READY');
+  });
+
+  it('does not let a missing answer for one fail the gate closed', () => {
+    // A question with no evidence behind it must not be able to stop an Issue
+    // just by going unanswered.
+    const decision = evaluate(policy({ a: decisive, b: recorded }, 0), { a: 0.9 });
+    expect(decision.outcome).toBe('READY');
+    expect(decision.checks.find((c) => c.name === 'b')?.enforced).toBe(false);
+  });
+
+  it('still reports every check it scored', () => {
+    const decision = evaluate(policy({ a: decisive, b: recorded }, 0), { a: 0.9, b: 0.1 });
+    expect(decision.checks.map((c) => c.name)).toEqual(['a', 'b']);
   });
 });

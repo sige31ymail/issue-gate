@@ -1,0 +1,20 @@
+{
+  "gate_version": 1,
+  "result": "HUMAN_REVIEW",
+  "repository": "sige31ymail/hexbound",
+  "issue_number": 224,
+  "checks": {
+    "scope_small_enough": 0.81,
+    "acceptance_criteria_clear": 0.64,
+    "acceptance_criteria_verifiable": 0.53,
+    "requires_human_decision": 0.61,
+    "dependency_blocked": 0.05,
+    "safe_for_unattended_execution": 0.93
+  },
+  "label_applied": "human-review",
+  "policy_version": "v1",
+  "model": "jev-1.13.0",
+  "run_url": "https://github.com/sige31ymail/hexbound/actions/runs/35588349495",
+  "evaluated_at": "2026-09-21T10:22:03.975Z",
+  "error": null
+}

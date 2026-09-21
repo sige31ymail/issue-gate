@@ -31,23 +31,72 @@ round trip.
 When several checks fail at once, the most severe outcome wins:
 `BLOCKED` > `HUMAN_REVIEW` > `NEEDS_SPLIT` > `NEEDS_DETAIL`.
 
-### The dead band, and why thresholds are not the whole story
+### Undecided answers
 
 A `noul` answer is a probability and carries no confidence value, so "the model
-is undecided" has to be derived from the probability itself. Each threshold is
-surrounded by a dead band; a result landing inside it yields `HUMAN_REVIEW`
-rather than `READY`.
+is undecided" has to be derived from the probability itself.
 
-**This raises the effective bar.** A check with `min_yes_probability: 0.90` and
-`dead_band: 0.05` only passes at 0.95. Both numbers appear in the audit comment
-so the arithmetic is never hidden. Set `dead_band: 0` to compare against the raw
-threshold instead.
+The first attempt put a dead band around each threshold and treated anything
+inside it as undecided. Measured against real Issues that turned out to be the
+wrong signal: 0.93 against a bar of 0.95 is a confident answer that falls short,
+not a model on the fence. It also meant the written threshold and the effective
+one differed, which produced a bar of 1.00 that nothing could reach.
 
-It also means a threshold can be written out of reach: `min_yes_probability:
-0.95` with the same dead band passes only at 1.00, and the gate then never
-returns `READY` while every audit line still reads as a plausible `AMBIGUOUS`.
-Policies whose passing range has collapsed to a single point are rejected at
-load time rather than failing silently.
+Thresholds are now the value an answer must actually reach, and indecision is
+measured where it lives — near 0.5. `ambiguity_band` is the half-width of that
+band. An undecided check prevents `READY`, but never outranks a check that named
+a concrete problem, so an Issue with a fixable fault is told what the fault is.
+
+### Which label an Issue gets
+
+Four failure labels exist, and the most severe one wins. That only routes
+usefully while `HUMAN_REVIEW` stays rare: a quality check mapped to it will fail
+on nearly every Issue, pin the result there, and make `NEEDS_SPLIT` and
+`NEEDS_DETAIL` unreachable. The first live corpus did exactly that.
+
+So a check whose failure the Issue's author can fix maps to `NEEDS_DETAIL` or
+`NEEDS_SPLIT`, and `HUMAN_REVIEW` is reserved for the ones that genuinely need a
+person — today, only `safe_for_unattended_execution` and the fail-closed paths.
+
+### Recording a check before trusting it
+
+A check with `enforced: false` is asked, scored and written into the audit
+record, but cannot change the verdict. That is how a new question earns its
+place: run it alongside the ones that decide, see whether its answers correlate
+with anything, and only then give it a vote. Enforcing a question from its first
+run means discovering afterwards whether it measured anything.
+
+A policy where every check is unenforced is rejected at load time — nothing
+would fail, so every Issue would come back `READY`.
+
+### Shadow mode
+
+`mode: shadow` records the verdict and admits the Issue to the night queue
+anyway. It exists for one purpose: while the gate is enforcing, the only Issues
+that ever run are the ones it already liked, so a wrongly rejected Issue never
+produces the evidence that would show the rejection was wrong. Shadow mode
+removes that blind spot, and the audit comment still states what the gate would
+have decided, which is what a later calibration pass compares against.
+
+It waives the model's verdict, never a fail-closed one. An Issue that could not
+be judged — an author outside `allowed_authors`, a closed or empty Issue, Jev
+unreachable, a malformed policy — is not admitted, because admitting on the
+author check would let anyone who can open an Issue put text in front of an
+agent that holds write access.
+
+### Tuning thresholds
+
+`evaluate` is pure, so a probability recorded once can be scored against any
+number of policies. The gate writes every probability into the audit comment;
+save those payloads and replay them:
+
+```
+npm run gate:local -- --replay fixtures/hexbound/*.json
+```
+
+No credentials, no requests, and no model variation mixed into the comparison.
+`fixtures/hexbound/` holds the six recordings the shipped thresholds were set
+from, and `tests/replay.test.ts` pins the label each one produces.
 
 ### Fail closed
 

@@ -62,11 +62,18 @@ function validateCheck(name: string, check: unknown): CheckPolicy {
     assert(typeof criteria === 'object', `check "${name}": criteria must be a mapping`);
   }
 
+  const enforced = c['enforced'];
+  assert(
+    enforced === undefined || typeof enforced === 'boolean',
+    `check "${name}": enforced must be true or false`,
+  );
+
   const result: CheckPolicy = {
     kind: 'noul',
     outcome: c['outcome'],
     instructions: c['instructions'],
   };
+  if (enforced === false) result.enforced = false;
   if (hasMin) result.min_yes_probability = c['min_yes_probability'] as number;
   if (hasMax) result.max_yes_probability = c['max_yes_probability'] as number;
   if (criteria) result.criteria = criteria;
@@ -104,6 +111,21 @@ function assertReachable(name: string, check: CheckPolicy, deadBand: number): vo
   );
 }
 
+/**
+ * Refuse a policy where nothing can decide anything.
+ *
+ * Every check set to `enforced: false` leaves no failing check to find and no
+ * ambiguous one either, so the gate returns READY for every Issue it is given.
+ * That is the one configuration that fails open, and it reads as a working
+ * policy right up until an Issue is admitted.
+ */
+function assertSomethingDecides(checks: Record<string, CheckPolicy>): void {
+  assert(
+    Object.values(checks).some((c) => c.enforced !== false),
+    'policy: at least one check must be enforced, or every Issue is admitted',
+  );
+}
+
 /** Validate a parsed base policy, filling in nothing — every field is explicit in YAML. */
 export function validatePolicy(raw: unknown): Policy {
   assert(raw && typeof raw === 'object', 'policy must be a mapping');
@@ -114,6 +136,13 @@ export function validatePolicy(raw: unknown): Policy {
   assert(
     isProbability(p['dead_band']),
     'policy: dead_band must be between 0 and 1',
+  );
+  // Absent means no undecided band, which is how a policy written before the
+  // field existed behaves.
+  const ambiguityBand = p['ambiguity_band'] ?? 0;
+  assert(
+    isProbability(ambiguityBand),
+    'policy: ambiguity_band must be between 0 and 1',
   );
   assert(
     typeof p['max_issue_chars'] === 'number' && p['max_issue_chars'] > 0,
@@ -145,6 +174,7 @@ export function validatePolicy(raw: unknown): Policy {
     checks[name] = validateCheck(name, rawChecks[name]);
     assertReachable(name, checks[name] as CheckPolicy, p['dead_band'] as number);
   }
+  assertSomethingDecides(checks);
 
   return {
     version: 1,
@@ -157,6 +187,7 @@ export function validatePolicy(raw: unknown): Policy {
       blocked: labels['blocked'] as string,
     },
     dead_band: p['dead_band'] as number,
+    ambiguity_band: ambiguityBand as number,
     allowed_authors: authors as string[],
     max_issue_chars: p['max_issue_chars'] as number,
     checks,
@@ -182,6 +213,13 @@ export function mergePolicy(base: Policy, override: PolicyOverride | null): Poli
   if (override.dead_band !== undefined) {
     assert(isProbability(override.dead_band), 'override: dead_band must be between 0 and 1');
     merged.dead_band = override.dead_band;
+  }
+  if (override.ambiguity_band !== undefined) {
+    assert(
+      isProbability(override.ambiguity_band),
+      'override: ambiguity_band must be between 0 and 1',
+    );
+    merged.ambiguity_band = override.ambiguity_band;
   }
   if (override.allowed_authors !== undefined) {
     assert(
@@ -227,6 +265,7 @@ export function mergePolicy(base: Policy, override: PolicyOverride | null): Poli
   for (const [name, check] of Object.entries(merged.checks)) {
     assertReachable(name, check, merged.dead_band);
   }
+  assertSomethingDecides(merged.checks);
 
   return merged;
 }

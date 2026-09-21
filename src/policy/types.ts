@@ -24,6 +24,13 @@ export type GateOutcome = 'READY' | FailureOutcome;
  * BLOCKED wins because a blocked Issue cannot be worked on at all; HUMAN_REVIEW
  * outranks the two "rewrite the Issue" outcomes because it needs a person rather
  * than a better description.
+ *
+ * That ranking only routes usefully while HUMAN_REVIEW stays rare. The first
+ * corpus had a quality check mapped to it that failed on every feature Issue,
+ * which pinned the result at HUMAN_REVIEW and made NEEDS_SPLIT and NEEDS_DETAIL
+ * unreachable: four labels were defined and two could ever appear. A check whose
+ * failure the Issue's author can fix belongs on NEEDS_DETAIL or NEEDS_SPLIT, and
+ * HUMAN_REVIEW is reserved for the ones that genuinely need a person.
  */
 export const OUTCOME_SEVERITY: Record<FailureOutcome, number> = {
   BLOCKED: 4,
@@ -47,6 +54,15 @@ export interface CheckPolicy {
   max_yes_probability?: number;
   /** Outcome contributed when this check fails. */
   outcome: FailureOutcome;
+  /**
+   * Whether this check's answer affects the verdict. Defaults to true.
+   *
+   * A check set to false is still asked, scored and recorded, but cannot change
+   * the outcome. That is how a question gets evidence before it is trusted with
+   * a decision: the alternative is to enforce it from the first run and find out
+   * afterwards whether it measured anything.
+   */
+  enforced?: boolean;
   /** The question put to Jev. */
   instructions: string;
   /** Optional descriptions of the true and false outcomes. */
@@ -77,6 +93,16 @@ export interface Policy {
    * its threshold is treated as ambiguous and never promotes an Issue to READY.
    */
   dead_band: number;
+  /**
+   * Half-width of the undecided band around 0.5.
+   *
+   * Nearness to a threshold turned out not to measure indecision: 0.93 against a
+   * bar of 0.95 is a confident yes that misses, not a model on the fence. An
+   * answer near 0.5 is the one that genuinely carries no signal, so that is what
+   * this band catches. It never overrides a failing check — an Issue with a
+   * concrete problem is told what the problem is.
+   */
+  ambiguity_band: number;
   /** Issue authors the gate will evaluate. Empty means every author is allowed. */
   allowed_authors: string[];
   /** Issue body is truncated to this many characters before reaching Jev. */
@@ -87,6 +113,7 @@ export interface Policy {
 /** Shape of a repository-specific override file. */
 export interface PolicyOverride {
   dead_band?: number;
+  ambiguity_band?: number;
   allowed_authors?: string[];
   max_issue_chars?: number;
   labels?: Partial<LabelPolicy>;

@@ -18,6 +18,8 @@ export interface CheckResult {
   status: CheckStatus;
   /** Outcome this check contributes when it fails. */
   outcome: FailureOutcome;
+  /** False when the check was asked and scored but kept out of the verdict. */
+  enforced: boolean;
 }
 
 export interface GateDecision {
@@ -59,11 +61,25 @@ function describeThreshold(check: CheckPolicy, deadBand: number): string {
  * that the model is undecided — and an undecided check must never be the reason
  * an Issue reaches unattended execution.
  */
+/**
+ * Is this answer too close to a coin flip to mean anything?
+ *
+ * Independent of the threshold: an answer of 0.5 carries no information wherever
+ * the bar sits, and an answer of 0.93 is confident whether or not it clears one.
+ */
+export function isUndecided(probability: number, ambiguityBand: number): boolean {
+  if (ambiguityBand <= 0) return false;
+  return Math.abs(probability - 0.5) < ambiguityBand - EPSILON;
+}
+
 export function classify(
   probability: number,
   check: CheckPolicy,
   deadBand: number,
+  ambiguityBand = 0,
 ): CheckStatus {
+  if (isUndecided(probability, ambiguityBand)) return 'AMBIGUOUS';
+
   if (check.min_yes_probability !== undefined) {
     const threshold = check.min_yes_probability;
     if (probability >= threshold + deadBand - EPSILON) return 'PASS';
@@ -101,6 +117,9 @@ export function evaluate(
         threshold: describeThreshold(check, policy.dead_band),
         status: 'FAIL',
         outcome: 'HUMAN_REVIEW',
+        // A check kept out of the verdict stays out of it even with no answer:
+        // an unenforced question must not be able to fail the gate closed.
+        enforced: check.enforced !== false,
       });
       continue;
     }
@@ -109,12 +128,14 @@ export function evaluate(
       name,
       probability,
       threshold: describeThreshold(check, policy.dead_band),
-      status: classify(probability, check, policy.dead_band),
+      status: classify(probability, check, policy.dead_band, policy.ambiguity_band),
       outcome: check.outcome,
+      enforced: check.enforced !== false,
     });
   }
 
-  const failed = checks.filter((c) => c.status === 'FAIL');
+  const enforced = checks.filter((c) => c.enforced);
+  const failed = enforced.filter((c) => c.status === 'FAIL');
   if (failed.length > 0) {
     // Several checks can fail at once; the most severe outcome wins so the label
     // reflects the biggest obstacle rather than whichever check ran first.
@@ -126,7 +147,7 @@ export function evaluate(
     return { outcome, checks };
   }
 
-  if (checks.some((c) => c.status === 'AMBIGUOUS')) {
+  if (enforced.some((c) => c.status === 'AMBIGUOUS')) {
     return { outcome: 'HUMAN_REVIEW', checks };
   }
 

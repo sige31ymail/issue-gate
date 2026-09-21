@@ -35,6 +35,7 @@ interface Inputs {
   policyPath: string;
   overridePath: string;
   model: string;
+  mode: 'enforce' | 'shadow';
   dryRun: boolean;
 }
 
@@ -54,6 +55,7 @@ function readInputs(): Inputs {
     policyPath: core.getInput('policy') || actionPath('policies', 'night-ready.yml'),
     overridePath: core.getInput('override-path') || '.github/issue-gate.yml',
     model: core.getInput('model'),
+    mode: core.getInput('mode') === 'shadow' ? 'shadow' : 'enforce',
     dryRun: core.getBooleanInput('dry-run'),
   };
 }
@@ -113,7 +115,18 @@ export async function run(): Promise<void> {
     }
   }
 
-  const labels = desiredLabels(policy, decision);
+  // Shadow mode admits every Issue the gate actually judged, so the night run's
+  // real outcome can be set against the gate's prediction. Without it the only
+  // Issues ever executed are the ones the gate already liked, and a false
+  // rejection stays invisible.
+  //
+  // It overrides the model's verdict, never a fail-closed one. Those come from
+  // the deterministic checks that run before Jev — an author outside
+  // allowed_authors above all — and admitting on one would let anyone who can
+  // open an Issue put text in front of an agent holding write access. A gate
+  // that could not reach a verdict has not produced a prediction to test.
+  const shadowAdmits = inputs.mode === 'shadow' && decision.error === undefined;
+  const labels = shadowAdmits ? [policy.labels.night_ready] : desiredLabels(policy, decision);
   // Every outcome carries a label, READY included. Reporting only the READY
   // label left the audit record claiming "none" on an Issue that had just been
   // labelled human-review.
@@ -127,9 +140,24 @@ export async function run(): Promise<void> {
     runUrl: `${context.serverUrl}/${repository}/actions/runs/${context.runId}`,
     evaluatedAt: new Date().toISOString(),
     labelApplied,
+    // Reported as shadow only when shadow actually decided the label, so the
+    // comment never claims a verdict was waived that in fact was applied.
+    mode: shadowAdmits ? 'shadow' : 'enforce',
   };
 
   const comment = renderComment(decision, auditContext);
+
+  if (shadowAdmits) {
+    core.warning(
+      `shadow mode: verdict ${decision.outcome} was recorded but not enforced; ` +
+        `#${issue.number} was admitted to the night queue`,
+    );
+  } else if (inputs.mode === 'shadow') {
+    core.warning(
+      `shadow mode: #${issue.number} was not admitted, because the gate could ` +
+        `not reach a verdict (${decision.error})`,
+    );
+  }
 
   if (inputs.dryRun) {
     core.info('dry-run: no labels or comments were written');

@@ -15,12 +15,23 @@ labels:
   human_review: human-review
   blocked: blocked
 
-# Half-width of the uncertainty band straddling every threshold.
+# Thresholds below are written as the value an answer must actually reach.
 #
-# A noul answer carries no confidence value, so nearness to the threshold is the
-# only signal that the model is undecided. A probability landing inside the band
-# yields HUMAN_REVIEW instead of READY.
-dead_band: 0.05
+# An earlier version kept a symmetric dead band around every threshold, which
+# meant the written number and the effective one differed: 0.90 passed at 0.95.
+# The two-column bookkeeping cost more than it bought — it produced a threshold
+# nothing could reach and needed a dedicated guard to catch that — so the band is
+# zero and the numbers say what they mean.
+dead_band: 0.0
+
+# Half-width of the undecided band around 0.5.
+#
+# Nearness to a threshold does not measure indecision. Measured against six real
+# Issues, 0.93 on a 0.95 bar was a confident answer landing just short, while the
+# answers that carried no signal sat near the middle. This band catches those. It
+# never outranks a failing check, so an Issue with a nameable problem is still
+# told what the problem is.
+ambiguity_band: 0.10
 
 # Only these Issue authors are evaluated. A READY result admits an Issue to an
 # unattended run with repository write access, so the set of people who can
@@ -42,7 +53,8 @@ max_issue_chars: 12000
 checks:
   scope_small_enough:
     kind: noul
-    min_yes_probability: 0.90
+    # Corpus: 0.29-0.38 for multi-system features, 0.60-0.81 for single changes.
+    min_yes_probability: 0.70
     outcome: NEEDS_SPLIT
     instructions: >-
       Can this Issue reasonably be completed in a single unattended coding-agent
@@ -57,7 +69,9 @@ checks:
 
   acceptance_criteria_clear:
     kind: noul
-    min_yes_probability: 0.90
+    # Corpus: 0.64-0.80 where the Issue has no completion section, 0.92-0.95
+    # where it lists concrete criteria. The cleanest separation of the six.
+    min_yes_probability: 0.70
     outcome: NEEDS_DETAIL
     instructions: >-
       Are the acceptance criteria concrete enough that a reader could tell
@@ -71,7 +85,9 @@ checks:
 
   acceptance_criteria_verifiable:
     kind: noul
-    min_yes_probability: 0.90
+    # Corpus: 0.52-0.78 against 0.89-0.93. Tracks the check above but runs lower
+    # on visual work, where objective verification is genuinely harder.
+    min_yes_probability: 0.70
     outcome: NEEDS_DETAIL
     instructions: >-
       Can completion be verified objectively — by tests, a command, a check, a
@@ -86,8 +102,15 @@ checks:
 
   requires_human_decision:
     kind: noul
-    max_yes_probability: 0.10
-    outcome: HUMAN_REVIEW
+    # Corpus: 0.25-0.27 for Issues that settle their own approach, 0.55-0.76 for
+    # the ones that leave it open. The check discriminates; the original 0.10
+    # simply sat below everything it measured.
+    max_yes_probability: 0.35
+    # NEEDS_DETAIL, not HUMAN_REVIEW. An unsettled decision is something the
+    # Issue's author can fix by writing the decision down, which is the cheapest
+    # repair available. Mapping it to HUMAN_REVIEW pinned every feature Issue at
+    # that outcome and made NEEDS_SPLIT and NEEDS_DETAIL unreachable.
+    outcome: NEEDS_DETAIL
     instructions: >-
       Does implementing this Issue require a product, UX, architecture, or
       security decision that the Issue has not already settled?
@@ -100,7 +123,11 @@ checks:
 
   dependency_blocked:
     kind: noul
-    max_yes_probability: 0.10
+    # Corpus: 0.05-0.24 for independent Issues, 0.75-0.83 for two that genuinely
+    # wait on a third. The check found a real dependency chain, and the gap
+    # between the two groups is wide enough that the line's exact place is not
+    # delicate.
+    max_yes_probability: 0.35
     outcome: BLOCKED
     instructions: >-
       Is this Issue blocked by another Issue, a change in another repository, a
@@ -114,10 +141,19 @@ checks:
 
   safe_for_unattended_execution:
     kind: noul
-    # The strictest bar in the policy, but stated so the dead band can still be
-    # added to it: 0.90 + dead_band 0.05 means a run passes at P(true) >= 0.95.
-    # Writing 0.95 here put the bar at 1.00, where nothing ever passed.
-    min_yes_probability: 0.90
+    # PROVISIONAL, and the loosest number here on purpose.
+    #
+    # Across six Issues this check returned 0.71-0.93 while every one of them was
+    # a source-only change to a browser game: no production data, no secrets, no
+    # published artifact. What it actually tracked was Issue size, not risk — the
+    # large features scored lowest. It is not currently separating safe from
+    # unsafe, so a strict bar here would only mask the checks that do work, which
+    # is what the previous 0.95 did.
+    #
+    # 0.70 admits this corpus, which is the right answer for a corpus that is
+    # uniformly safe. Raise it once the question has been rewritten and
+    # re-measured; see docs/architecture.md.
+    min_yes_probability: 0.70
     outcome: HUMAN_REVIEW
     instructions: >-
       Is this Issue safe to implement unattended, with no person watching the

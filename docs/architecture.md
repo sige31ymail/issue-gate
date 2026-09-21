@@ -69,31 +69,103 @@ has no `confidence` field. So the acceptance criterion "cover the ambiguous /
 low-confidence case" needed a definition, and proximity to the threshold is the
 only signal available.
 
-Each threshold is surrounded by a symmetric band. Inside it, the check is
-`AMBIGUOUS` and the Issue gets `HUMAN_REVIEW`.
+The first design put a symmetric band around every threshold and called
+anything inside it `AMBIGUOUS`. Six real Issues showed that this measures the
+wrong thing. `safe_for_unattended_execution` returned 0.93 against a bar of
+0.95 — a confident answer falling just short, reported as indecision — while the
+answers that genuinely carried no signal sat near 0.5 and were classified
+cleanly as failures.
 
-The consequence is worth stating plainly: **the dead band raises every bar.**
-With `min_yes_probability: 0.90` and `dead_band: 0.05`, a check passes at 0.95,
-not 0.90. The handoff's own worked example — `scope_small_enough` at 0.94
-against a 0.90 threshold — lands inside the band and does *not* reach `READY`
-under the shipped policy. That is intentional for a first run, where admitting
-too few Issues is cheaper than admitting a bad one, but it is the first number
-to revisit once there is real data. Set `dead_band: 0` to compare against the
-raw threshold.
+The band also created two numbers for every threshold, the written one and the
+effective one. That bookkeeping produced a bar of 1.00 that nothing could reach,
+needed a dedicated guard to catch, and made every audit line read as a plausible
+`AMBIGUOUS` while the gate quietly admitted nothing.
 
-A threshold can therefore be written out of reach. The shipped policy originally
-asked for `min_yes_probability: 0.95` on `safe_for_unattended_execution`, which
-with a 0.05 band passes only at exactly 1.00 — a bar no answer clears in
-practice. The first live run made this visible: hexbound#225 came back at 0.91
-and was refused, and the audit comment showed nothing but an ordinary-looking
-`AMBIGUOUS`. A gate that can never say `READY` fails in the safe direction,
-which is precisely why it can run unnoticed. `validatePolicy` and `mergePolicy`
-now reject a check whose passing range has collapsed, at load time, with a
-message naming the unreachable bar.
+Thresholds are now written as the value an answer must reach. Indecision is a
+separate, threshold-independent rule: `|p - 0.5| < ambiguity_band`. An undecided
+check prevents `READY` but never outranks a failing one, so an Issue with a
+nameable fault is told the fault rather than handed to a person.
 
 The alternative technique, self-consistency (asking each question several times
 and looking at the spread), costs a request per repetition. It is worth
 considering if the band proves too blunt, but it is not in the MVP.
+
+## Which label an Issue gets
+
+Four failure labels exist and the most severe wins. The ranking only routes
+usefully while `HUMAN_REVIEW` stays rare, and the first corpus showed why.
+
+`requires_human_decision` was mapped to `HUMAN_REVIEW` with a bar of 0.10. It
+returned 0.55-0.76 on every under-specified Issue, so the result was pinned at
+`HUMAN_REVIEW` or above and `NEEDS_SPLIT` and `NEEDS_DETAIL` could not appear at
+all. Four labels were defined; two could ever be produced. The Issue that
+actually needed one sentence of acceptance criteria was reported as needing a
+person.
+
+The rule that follows: a check whose failure the Issue's author can repair maps
+to `NEEDS_DETAIL` or `NEEDS_SPLIT`. `HUMAN_REVIEW` is for the checks that
+genuinely need a person, plus every fail-closed path. An unsettled design
+decision is a detail the author can write down, so it moved to `NEEDS_DETAIL`.
+
+## Calibrating against real outcomes
+
+Thresholds set from a corpus of six recordings are bounded from one side only:
+the corpus contains no Issue that should have passed, so the numbers are known
+not to be too loose and unknown to be too tight. Closing that gap needs ground
+truth, and ground truth is whether the night run actually produced a usable PR.
+
+Collecting it has a sampling problem. An enforcing gate only ever lets through
+the Issues it already approved, so the outcomes observed are conditioned on the
+gate's own verdict and a false rejection never generates the evidence that would
+expose it. `mode: shadow` admits everything and records the verdict without
+acting on it, which makes the verdict a prediction that the run either confirms
+or refutes.
+
+Two limits are deliberate. Shadow mode waives the model's verdict but not a
+fail-closed one, so `allowed_authors` still holds: without that, anyone able to
+open an Issue could put text in front of an agent with write access. And it is
+only defensible while the night agent opens pull requests rather than merging
+them, which bounds the cost of a wrong admission to a closed PR.
+
+A question can also be recorded without being enforced (`enforced: false`). Its
+answers land in the audit payload under `recorded_only` and change nothing, so a
+new check can be measured against the ones that already work before it is given
+a vote.
+
+## Replaying a corpus
+
+`evaluate` is pure and takes probabilities, not Issues, so a recorded answer can
+be scored against any policy. Retuning a threshold by calling Jev again mixes
+the change under test with the model's own run-to-run variation and costs a
+request per experiment; `--replay` removes both and needs no credentials.
+
+The corpus is collected from the gate's own output: the audit comment already
+carries every probability as JSON. `fixtures/hexbound/` holds the six recordings
+the current thresholds were set from, and the tests pin the label each produces,
+so a future retune has to state what it does to real Issues.
+
+## What the first corpus measured
+
+Six Issues from sige31ymail/hexbound, three narrow and under-specified
+(#221, #224, #225) and three well-specified but large and interdependent
+(#218, #219, #220).
+
+- `acceptance_criteria_clear` separated most cleanly: 0.64-0.80 where the Issue
+  had no completion section, 0.92-0.95 where it listed criteria.
+- `dependency_blocked` found a real chain. #219 and #220 both wait on #218, and
+  scored 0.83 and 0.75 against 0.05-0.24 for the independent Issues.
+- `requires_human_decision` discriminated too, 0.25-0.27 against 0.55-0.76. Only
+  its threshold and its outcome mapping were wrong.
+- `safe_for_unattended_execution` did not discriminate at all. All six Issues are
+  source-only changes to a browser game, and it returned 0.71-0.93 — tracking
+  Issue size rather than risk, with the large features scoring lowest. Its
+  threshold is provisional and deliberately permissive so it cannot mask the
+  checks that work. The question needs rewriting and re-measuring before that
+  number means anything.
+
+None of the six reached `READY`, which is the right answer: none of them is both
+small enough for one run and specified well enough to verify. That is a finding
+about the Issues as much as about the gate.
 
 ## Comparisons carry a tolerance
 
@@ -140,8 +212,9 @@ marker across repositories.
 ## Open questions
 
 - **Threshold calibration.** Every number in the shipped policy is a starting
-  value. Six checks ANDed at 0.90, plus the dead band, will admit few Issues at
-  first. That is the intended direction of error for a first run, but
+  value, now moved once against a corpus of six. Six checks ANDed still admit
+  few Issues, and the corpus contains no example that should pass, so the
+  thresholds are bounded from one side only. That is the intended direction of error for a first run, but
   the point of the audit payload is to replace guesses with data.
 - **`safe_for_unattended_execution` maps to `HUMAN_REVIEW`.** It could argue for
   `BLOCKED`. `HUMAN_REVIEW` was chosen because the Issue is usually actionable

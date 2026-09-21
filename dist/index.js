@@ -40691,6 +40691,17 @@ function isAuthorAllowed(policy, author) {
 function failClosed(error) {
     return { outcome: 'HUMAN_REVIEW', checks: [], error };
 }
+/**
+ * The labels the Issue should carry after a run. Always exactly one.
+ *
+ * Every outcome names a label, READY included, so the audit record can report
+ * what was written without deriving it a second time.
+ */
+function desiredLabels(policy, decision) {
+    return decision.outcome === 'READY'
+        ? [policy.labels.night_ready]
+        : [labelForOutcome(policy.labels, decision.outcome)];
+}
 
 ;// CONCATENATED MODULE: ./src/render.ts
 /**
@@ -41727,6 +41738,29 @@ function validateCheck(name, check) {
         result.criteria = criteria;
     return result;
 }
+/** Matches the tolerance {@link classify} uses, so the two agree at the bound. */
+const load_EPSILON = 1e-9;
+/**
+ * Reject a threshold the dead band has pushed out of reach.
+ *
+ * `classify` passes a min check at `min + dead_band` and a max check at
+ * `max - dead_band`, so a policy can quietly define a check nothing can satisfy:
+ * min 0.95 with a dead band of 0.05 demands a probability of exactly 1.00. The
+ * gate then never reaches READY and the reason is invisible in the audit record,
+ * because every line reads as a legitimate AMBIGUOUS. A passing range that has
+ * collapsed to a single point is an authoring mistake, not a strict policy.
+ */
+function assertReachable(name, check, deadBand) {
+    if (check.min_yes_probability !== undefined) {
+        const bar = check.min_yes_probability + deadBand;
+        assert(bar < 1 - load_EPSILON, `check "${name}": min_yes_probability ${check.min_yes_probability} with dead_band ` +
+            `${deadBand} can only pass at P(true) >= ${bar.toFixed(2)}, which no answer reaches`);
+        return;
+    }
+    const bar = check.max_yes_probability - deadBand;
+    assert(bar > load_EPSILON, `check "${name}": max_yes_probability ${check.max_yes_probability} with dead_band ` +
+        `${deadBand} can only pass at P(true) <= ${bar.toFixed(2)}, which no answer reaches`);
+}
 /** Validate a parsed base policy, filling in nothing — every field is explicit in YAML. */
 function validatePolicy(raw) {
     assert(raw && typeof raw === 'object', 'policy must be a mapping');
@@ -41749,6 +41783,7 @@ function validatePolicy(raw) {
     const checks = {};
     for (const name of names) {
         checks[name] = validateCheck(name, rawChecks[name]);
+        assertReachable(name, checks[name], p['dead_band']);
     }
     return {
         version: 1,
@@ -41812,6 +41847,11 @@ function mergePolicy(base, override) {
         assert(!merged.checks[name], `override: additional check "${name}" collides with an existing check`);
         merged.checks[name] = validateCheck(name, check);
     }
+    // An override can move a threshold or the dead band, so reachability is
+    // re-checked across every check rather than only the ones it touched.
+    for (const [name, check] of Object.entries(merged.checks)) {
+        assertReachable(name, check, merged.dead_band);
+    }
     return merged;
 }
 async function loadPolicyFile(path) {
@@ -41873,12 +41913,6 @@ function readInputs() {
         dryRun: core.getBooleanInput('dry-run'),
     };
 }
-/** Labels the Issue should carry after this run. */
-function desiredLabels(policy, decision) {
-    return decision.outcome === 'READY'
-        ? [policy.labels.night_ready]
-        : [labelForOutcome(policy.labels, decision.outcome)];
-}
 async function run() {
     const inputs = readInputs();
     const repository = `${lib_github.context.repo.owner}/${lib_github.context.repo.repo}`;
@@ -41927,7 +41961,10 @@ async function run() {
         }
     }
     const labels = desiredLabels(policy, decision);
-    const labelApplied = decision.outcome === 'READY' ? policy.labels.night_ready : null;
+    // Every outcome carries a label, READY included. Reporting only the READY
+    // label left the audit record claiming "none" on an Issue that had just been
+    // labelled human-review.
+    const labelApplied = labels[0] ?? null;
     const auditContext = {
         repository,
         issueNumber: issue.number,

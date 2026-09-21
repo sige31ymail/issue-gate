@@ -73,6 +73,37 @@ function validateCheck(name: string, check: unknown): CheckPolicy {
   return result;
 }
 
+/** Matches the tolerance {@link classify} uses, so the two agree at the bound. */
+const EPSILON = 1e-9;
+
+/**
+ * Reject a threshold the dead band has pushed out of reach.
+ *
+ * `classify` passes a min check at `min + dead_band` and a max check at
+ * `max - dead_band`, so a policy can quietly define a check nothing can satisfy:
+ * min 0.95 with a dead band of 0.05 demands a probability of exactly 1.00. The
+ * gate then never reaches READY and the reason is invisible in the audit record,
+ * because every line reads as a legitimate AMBIGUOUS. A passing range that has
+ * collapsed to a single point is an authoring mistake, not a strict policy.
+ */
+function assertReachable(name: string, check: CheckPolicy, deadBand: number): void {
+  if (check.min_yes_probability !== undefined) {
+    const bar = check.min_yes_probability + deadBand;
+    assert(
+      bar < 1 - EPSILON,
+      `check "${name}": min_yes_probability ${check.min_yes_probability} with dead_band ` +
+        `${deadBand} can only pass at P(true) >= ${bar.toFixed(2)}, which no answer reaches`,
+    );
+    return;
+  }
+  const bar = (check.max_yes_probability as number) - deadBand;
+  assert(
+    bar > EPSILON,
+    `check "${name}": max_yes_probability ${check.max_yes_probability} with dead_band ` +
+      `${deadBand} can only pass at P(true) <= ${bar.toFixed(2)}, which no answer reaches`,
+  );
+}
+
 /** Validate a parsed base policy, filling in nothing — every field is explicit in YAML. */
 export function validatePolicy(raw: unknown): Policy {
   assert(raw && typeof raw === 'object', 'policy must be a mapping');
@@ -112,6 +143,7 @@ export function validatePolicy(raw: unknown): Policy {
   const checks: Record<string, CheckPolicy> = {};
   for (const name of names) {
     checks[name] = validateCheck(name, rawChecks[name]);
+    assertReachable(name, checks[name] as CheckPolicy, p['dead_band'] as number);
   }
 
   return {
@@ -188,6 +220,12 @@ export function mergePolicy(base: Policy, override: PolicyOverride | null): Poli
       `override: additional check "${name}" collides with an existing check`,
     );
     merged.checks[name] = validateCheck(name, check);
+  }
+
+  // An override can move a threshold or the dead band, so reachability is
+  // re-checked across every check rather than only the ones it touched.
+  for (const [name, check] of Object.entries(merged.checks)) {
+    assertReachable(name, check, merged.dead_band);
   }
 
   return merged;

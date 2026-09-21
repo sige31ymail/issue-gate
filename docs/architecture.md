@@ -81,6 +81,16 @@ too few Issues is cheaper than admitting a bad one, but it is the first number
 to revisit once there is real data. Set `dead_band: 0` to compare against the
 raw threshold.
 
+A threshold can therefore be written out of reach. The shipped policy originally
+asked for `min_yes_probability: 0.95` on `safe_for_unattended_execution`, which
+with a 0.05 band passes only at exactly 1.00 — a bar no answer clears in
+practice. The first live run made this visible: hexbound#225 came back at 0.91
+and was refused, and the audit comment showed nothing but an ordinary-looking
+`AMBIGUOUS`. A gate that can never say `READY` fails in the safe direction,
+which is precisely why it can run unnoticed. `validatePolicy` and `mergePolicy`
+now reject a check whose passing range has collapsed, at load time, with a
+message naming the unreachable bar.
+
 The alternative technique, self-consistency (asking each question several times
 and looking at the spread), costs a request per repetition. It is worth
 considering if the band proves too blunt, but it is not in the MVP.
@@ -130,8 +140,8 @@ marker across repositories.
 ## Open questions
 
 - **Threshold calibration.** Every number in the shipped policy is a starting
-  value. Six checks ANDed at 0.90–0.95, plus the dead band, will admit few
-  Issues at first. That is the intended direction of error for a first run, but
+  value. Six checks ANDed at 0.90, plus the dead band, will admit few Issues at
+  first. That is the intended direction of error for a first run, but
   the point of the audit payload is to replace guesses with data.
 - **`safe_for_unattended_execution` maps to `HUMAN_REVIEW`.** It could argue for
   `BLOCKED`. `HUMAN_REVIEW` was chosen because the Issue is usually actionable

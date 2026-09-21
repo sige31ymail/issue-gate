@@ -1,4 +1,5 @@
 import {
+  labelForOutcome,
   OUTCOME_SEVERITY,
   type CheckPolicy,
   type FailureOutcome,
@@ -156,4 +157,16 @@ export function isAuthorAllowed(policy: Policy, author: string): boolean {
  */
 export function failClosed(error: string): GateDecision {
   return { outcome: 'HUMAN_REVIEW', checks: [], error };
+}
+
+/**
+ * The labels the Issue should carry after a run. Always exactly one.
+ *
+ * Every outcome names a label, READY included, so the audit record can report
+ * what was written without deriving it a second time.
+ */
+export function desiredLabels(policy: Policy, decision: GateDecision): string[] {
+  return decision.outcome === 'READY'
+    ? [policy.labels.night_ready]
+    : [labelForOutcome(policy.labels, decision.outcome)];
 }

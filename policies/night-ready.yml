@@ -114,7 +114,10 @@ checks:
 
   safe_for_unattended_execution:
     kind: noul
-    min_yes_probability: 0.95
+    # The strictest bar in the policy, but stated so the dead band can still be
+    # added to it: 0.90 + dead_band 0.05 means a run passes at P(true) >= 0.95.
+    # Writing 0.95 here put the bar at 1.00, where nothing ever passed.
+    min_yes_probability: 0.90
     outcome: HUMAN_REVIEW
     instructions: >-
       Is this Issue safe to implement unattended, with no person watching the

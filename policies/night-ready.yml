@@ -25,9 +25,16 @@ dead_band: 0.05
 # Only these Issue authors are evaluated. A READY result admits an Issue to an
 # unattended run with repository write access, so the set of people who can
 # trigger that is a deterministic check, never a model judgment.
+#
+# claude[bot] is on the list because the operating model is that an LLM writes
+# and refines these Issues; without it the gate would reject most of what it
+# exists to judge. Note the exact login: the API reports a GitHub App as
+# "<app>[bot]", so a bare "claude" would never match.
+#
 # An empty list allows every author.
 allowed_authors:
   - sige31ymail
+  - claude[bot]
 
 # Issue bodies are truncated to this many characters before reaching Jev.
 max_issue_chars: 12000

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classify, evaluate, failClosed } from '../src/gate/evaluate.js';
+import { classify, evaluate, failClosed, isAuthorAllowed } from '../src/gate/evaluate.js';
 import type { CheckPolicy, Policy } from '../src/policy/types.js';
 
 const labels = {
@@ -144,5 +144,43 @@ describe('evaluate', () => {
   it('reports every configured check even when all pass', () => {
     const decision = evaluate(policy({ a: minCheck, b: maxCheck }), { a: 0.99, b: 0.01 });
     expect(decision.checks.map((c) => c.name).sort()).toEqual(['a', 'b']);
+  });
+});
+
+describe('isAuthorAllowed', () => {
+  const withAuthors = (authors: string[]): Policy => ({
+    ...policy({ a: minCheck }),
+    allowed_authors: authors,
+  });
+
+  it('allows every author when the list is empty', () => {
+    expect(isAuthorAllowed(withAuthors([]), 'anyone')).toBe(true);
+    expect(isAuthorAllowed(withAuthors([]), '')).toBe(true);
+  });
+
+  it('allows a listed author', () => {
+    expect(isAuthorAllowed(withAuthors(['sige31ymail']), 'sige31ymail')).toBe(true);
+  });
+
+  it('rejects an author who is not listed', () => {
+    expect(isAuthorAllowed(withAuthors(['sige31ymail']), 'someone-else')).toBe(false);
+  });
+
+  it('matches a GitHub App by its bracketed login', () => {
+    // The API reports an App as "<app>[bot]". A policy listing a bare "claude"
+    // would silently reject every Issue the app writes.
+    const p = withAuthors(['sige31ymail', 'claude[bot]']);
+    expect(isAuthorAllowed(p, 'claude[bot]')).toBe(true);
+    expect(isAuthorAllowed(p, 'claude')).toBe(false);
+  });
+
+  it('does not match on a prefix or a different case', () => {
+    const p = withAuthors(['claude[bot]']);
+    expect(isAuthorAllowed(p, 'claude[bot]x')).toBe(false);
+    expect(isAuthorAllowed(p, 'Claude[bot]')).toBe(false);
+  });
+
+  it('rejects an empty author when a list is configured', () => {
+    expect(isAuthorAllowed(withAuthors(['sige31ymail']), '')).toBe(false);
   });
 });

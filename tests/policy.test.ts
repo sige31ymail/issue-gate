@@ -195,6 +195,12 @@ describe('the shipped policy', () => {
     expect(policy.labels.night_ready).toBe('night-queue');
   });
 
+  it('lets the Claude app through, since it writes most of the Issues', async () => {
+    const policy = await loadPolicyFile(new URL('../policies/night-ready.yml', import.meta.url).pathname);
+    expect(policy.allowed_authors).toContain('claude[bot]');
+    expect(policy.allowed_authors).toContain('sige31ymail');
+  });
+
   it('maps every outcome to a distinct managed label', async () => {
     const policy = await loadPolicyFile(new URL('../policies/night-ready.yml', import.meta.url).pathname);
     expect(labelForOutcome(policy.labels, 'BLOCKED')).toBe('blocked');

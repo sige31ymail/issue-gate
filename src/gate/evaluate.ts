@@ -133,6 +133,21 @@ export function evaluate(
 }
 
 /**
+ * Whether the gate will evaluate an Issue from this author.
+ *
+ * A READY result hands an Issue to an unattended agent holding repository
+ * write access, so this is a deterministic check that runs before Jev ever
+ * sees the text. An empty list allows every author.
+ *
+ * Matching is exact and case-sensitive. GitHub reports an App's login as
+ * `<app>[bot]`, so that suffix belongs in the policy verbatim.
+ */
+export function isAuthorAllowed(policy: Policy, author: string): boolean {
+  if (policy.allowed_authors.length === 0) return true;
+  return policy.allowed_authors.includes(author);
+}
+
+/**
  * The decision used whenever evaluation cannot complete.
  *
  * Jev being unreachable, a malformed policy, or an untrusted Issue author all

@@ -12,7 +12,14 @@
  * needs no credentials. This is the loop for tuning thresholds: edit
  * `policies/night-ready.yml`, replay the corpus, compare the labels.
  *
- *   npm run gate:local -- --replay fixtures/hexbound/*.json
+ *   npm run gate:local -- --replay fixtures/hexbound/issue-*.json
+ *
+ * A repository that adds its own checks runs a different policy from the one
+ * in `policies/`, so --override merges its file in and answers what that
+ * repository actually does:
+ *
+ *   npm run gate:local -- --replay fixtures/hexbound/issue-*.json \
+ *     --override fixtures/hexbound/override.yml
  */
 import { resolve } from 'node:path';
 import { getOctokit } from '@actions/github';
@@ -41,7 +48,8 @@ interface Args {
 const USAGE =
   'usage:\n' +
   '  gate:local --repo <owner/name> --issue <number> [--policy <path>] [--json]\n' +
-  '  gate:local --replay <payload.json> [...] [--policy <path>] [--outcomes <path>] [--json]';
+  '  gate:local --replay <payload.json> [...] [--policy <path>] [--override <path>]\n' +
+  '                                          [--outcomes <path>] [--json]';
 
 function get(argv: string[], name: string): string | undefined {
   const index = argv.indexOf(`--${name}`);
@@ -84,12 +92,20 @@ function parseArgs(argv: string[]): Args {
 /**
  * Score a corpus of recorded evaluations against the policy on disk.
  *
- * No override is merged: a replay answers what the shared policy does, and a
- * repository override would make the same corpus produce different labels
- * depending on which repository's file happened to be read.
+ * --override merges a repository's own file in, and answering without it is
+ * how a calibration can measure clean and change nothing. On 2026-09-21 the
+ * shared policy was retuned to 8 of 9 on the hexbound corpus while hexbound's
+ * own override still enforced a check that failed on all nine, so the policy
+ * that actually ran there scored 3 of 9. The shared policy alone is the
+ * default because it is what this repository ships; it is not what any
+ * repository with an override runs.
  */
 async function replay(argv: string[], paths: string[]): Promise<void> {
-  const policy = await loadPolicyFile(policyPath(argv));
+  const base = await loadPolicyFile(policyPath(argv));
+  const overridePath = get(argv, 'override');
+  const policy = overridePath
+    ? mergePolicy(base, parseOverride(await readFile(overridePath, 'utf8')))
+    : base;
   const results = [];
   for (const path of paths) {
     results.push(await replayFile(policy, path));
@@ -103,7 +119,10 @@ async function replay(argv: string[], paths: string[]): Promise<void> {
   process.stdout.write(`${renderReplayTable(results)}\n`);
 
   const ready = results.filter((r) => r.decision.outcome === 'READY').length;
-  process.stdout.write(`\n${ready}/${results.length} would reach READY\n`);
+  process.stdout.write(`\n${ready}/${results.length} would reach READY`);
+  // Name the override in the output. A scoreboard that does not say which
+  // policy produced it is the thing that went wrong here in the first place.
+  process.stdout.write(overridePath ? ` (with ${overridePath})\n` : ' (shared policy only)\n');
 
   // --outcomes turns the replay from "what would this policy say" into "would
   // it have been right", which is the only question thresholds can be settled

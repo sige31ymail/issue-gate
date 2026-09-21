@@ -144,6 +144,18 @@ carries every probability as JSON. `fixtures/hexbound/` holds the nine
 recordings the current thresholds were set from, and the tests pin the label
 each produces, so a future retune has to state what it does to real Issues.
 
+`--override` merges a repository's own file into the replay. Leaving it out
+answers what this repository ships, which is not what a repository with an
+override runs, and the difference is not small: on 2026-09-21 the shared policy
+was retuned to 8 of 9 on the hexbound corpus while hexbound's override still
+enforced a check whose answers ran 0.19-0.58 against its own 0.70 bar, below it
+on every Issue. The policy that actually ran there scored 3 of 9. An override
+cannot remove a shared check, so it reads as unable to weaken the gate; it can
+still dominate every verdict by adding a check that fails on everything, because
+the most severe failing outcome wins. `fixtures/hexbound/override.yml` is a
+committed snapshot of that file so the merged behaviour is pinned by tests here,
+and it is a copy, so it has to be refreshed when the original changes.
+
 `--outcomes` scores a replay against what the night run actually did.
 `fixtures/hexbound/outcomes.json` records, per Issue, whether the run succeeded
 or failed, the cause of a failure, and the evidence for that reading. A replay

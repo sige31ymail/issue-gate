@@ -11,7 +11,7 @@ import {
   score,
   type ReplayResult,
 } from '../src/replay.js';
-import { loadPolicyFile } from '../src/policy/load.js';
+import { loadPolicyFile, mergePolicy, parseOverride } from '../src/policy/load.js';
 import type { Policy } from '../src/policy/types.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -144,6 +144,58 @@ describe('the hexbound corpus', () => {
     const [result] = await replayAll([200]);
     const scored = score([result!], { 200: { result: 'inconclusive', cause: 'runner', evidence: 'n/a' } });
     expect(scored[0]?.correct).toBeNull();
+  });
+});
+
+describe("a repository's merged policy", () => {
+  // The shared policy is not what a repository with an override runs, and the
+  // difference is not small. On 2026-09-21 the shared policy was recalibrated
+  // to 8 of 9 on this corpus while hexbound's override still enforced a check
+  // that failed on all nine, so hexbound's effective policy scored 3 of 9 and
+  // refused six Issues that went on to open a pull request. Nothing in this
+  // repository's tests could see that.
+  const issues = [200, 218, 219, 220, 221, 222, 223, 224, 225];
+
+  const mergedWith = async (overrideText: string): Promise<ReplayResult[]> => {
+    const policy = mergePolicy(await shippedPolicy(), parseOverride(overrideText));
+    return Promise.all(issues.map((n) => replayFile(policy, fixture(`issue-${n}.json`))));
+  };
+
+  it("scores the hexbound snapshot as well as the shared policy does", async () => {
+    const results = await mergedWith(await readFile(fixture('override.yml'), 'utf8'));
+    const outcomes = parseOutcomes(await readFile(fixture('outcomes.json'), 'utf8'), 'o');
+    const scored = score(results, outcomes);
+    expect(scored.filter((s) => !s.admitted && s.outcome.result === 'succeeded')).toEqual([]);
+    expect(scored.filter((s) => s.correct === true)).toHaveLength(8);
+  });
+
+  it('shows an added check overriding every verdict the shared policy reaches', async () => {
+    // The mechanism. An override cannot remove a shared check, which reads as
+    // being unable to weaken the gate — but the most severe failing outcome
+    // wins, so one added check that fails everywhere decides everything, and
+    // the shared policy's thresholds stop mattering.
+    const results = await mergedWith(
+      [
+        'additional_checks:',
+        '  never_passes:',
+        '    kind: noul',
+        '    min_yes_probability: 0.99',
+        '    outcome: HUMAN_REVIEW',
+        '    instructions: is this Issue ready?',
+        '    criteria:',
+        '      true: it is',
+        '      false: it is not',
+      ].join('\n'),
+    );
+    // The corpus recorded no answer for this check, and a missing answer on an
+    // enforced check fails closed, which is the same shape as an answer below
+    // the bar. Seven of these nine reach READY under the shared policy alone.
+    expect(results.filter((r) => r.decision.outcome === 'READY')).toEqual([]);
+    // Still HUMAN_REVIEW rather than the added check's outcome everywhere: the
+    // two Issues waiting on unmerged work stay BLOCKED, which outranks it. An
+    // override drowns the shared policy's passes, not its findings.
+    const outcomes = results.map((r) => r.decision.outcome);
+    expect(new Set(outcomes)).toEqual(new Set(['HUMAN_REVIEW', 'BLOCKED']));
   });
 });
 

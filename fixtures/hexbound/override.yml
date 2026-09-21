@@ -1,0 +1,96 @@
+# A snapshot of sige31ymail/hexbound's .github/issue-gate.yml, for replaying
+# what that repository's policy actually does rather than what this one ships.
+#
+# It is a copy, so it can drift. Refresh it when hexbound's file changes; the
+# tests beside it pin the merged behaviour, not the file's contents, so a stale
+# copy tests a policy nobody runs. Taken from hexbound PR #234.
+#
+# hexbound's own header, from here down:
+#
+# All three are recorded and not enforced, as of the night run of 2026-09-21.
+# None of them separated the Issues that produced a pull request from the ones
+# that did not, and the shared policy demoted five of its own checks on the same
+# evidence. The numbers are under each check.
+#
+# This matters more here than it looks. The shared policy now refuses only
+# Issues that wait on unmerged work, but merged with this file as it stood,
+# failure_is_caught_by_checks failed on all nine Issues and pinned every one of
+# them at HUMAN_REVIEW. The recalibration upstream bought this repository
+# nothing until these two moved too: 3 of 9 correct with six Issues refused that
+# went on to open a PR, which is exactly the shared policy's old behaviour.
+
+additional_checks:
+  # CLAUDE.md states the criterion this repository already uses to pick a model:
+  # "the tier is chosen by whether the work can fail silently, not by how large
+  # it is". A weak model executing unattended is the case that criterion was
+  # written for, so it becomes a check.
+  failure_is_caught_by_checks:
+    # Corpus: 0.19-0.58 across the Issues that produced a PR, 0.37-0.44 across
+    # the ones that did not. Every answer in the set sits below this bar, so
+    # enforcing it refuses everything and hides every other check behind
+    # HUMAN_REVIEW. It is also the widest-scoped question here — whether a
+    # mistake would be caught — which the model appears to answer by guessing.
+    kind: noul
+    enforced: false
+    min_yes_probability: 0.70
+    outcome: HUMAN_REVIEW
+    instructions: >-
+      If this Issue were implemented incorrectly, would the repository's own
+      automated checks — type checking, unit tests, the balance simulation, the
+      build — fail as a result?
+    criteria:
+      true: >-
+        A wrong implementation breaks a type, a test, or the build, so the
+        mistake is reported rather than merged quietly.
+      false: >-
+        The work could be wrong while every check still passes: visual
+        appearance, game feel, the placement of a boundary between rules and
+        rendering, or the order of state updates and presentation.
+
+  # The other way a weak model fails unattended: it cannot find where to make
+  # the change, so it edits the wrong place or rewrites more than it needed to.
+  change_is_localized:
+    # Corpus: 0.95-0.97 on all three Issues that failed, against 0.30-0.97 on
+    # the ones that succeeded. Inverted, and the single Issue it refused, at
+    # 0.30, went on to open a PR.
+    kind: noul
+    enforced: false
+    min_yes_probability: 0.70
+    outcome: NEEDS_DETAIL
+    instructions: >-
+      Does this Issue say where the change belongs, or make it obvious enough
+      that an implementer would not have to search the codebase to find out?
+    criteria:
+      true: >-
+        The Issue names the files, functions or systems involved, or the target
+        follows directly from what it describes.
+      false: >-
+        Finding the right place would mean reading a large amount of unrelated
+        code first, or the change is spread across many call sites.
+
+  # Recorded, not enforced — and now measured.
+  #
+  # This asks Jev to judge a specific third-party model's ability, which it has
+  # no reliable basis for and no feedback loop on: the answer cannot be checked
+  # against the Issue text the way every other question here can, and it rots
+  # silently the day the executor changes. It was added to find out whether the
+  # answers correlate with what the night runs actually produce.
+  #
+  # Corpus: 0.13-0.70 on the Issues that produced a PR, 0.26-0.52 on the ones
+  # that did not. They do not correlate. It stays one more run to see whether
+  # that holds with the runner's own faults fixed, and comes out if it does.
+  executor_can_handle:
+    kind: noul
+    min_yes_probability: 0.70
+    outcome: HUMAN_REVIEW
+    enforced: false
+    instructions: >-
+      Could a small, fast coding model — roughly the capability of DeepSeek V4
+      Flash — complete this Issue end to end with no person intervening?
+    criteria:
+      true: >-
+        The task is routine implementation following patterns already present in
+        the codebase.
+      false: >-
+        The task needs design judgment, holding several interacting systems in
+        mind at once, or inferring intent the Issue does not state.

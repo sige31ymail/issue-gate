@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import * as core from '@actions/core';
 import { context, getOctokit } from '@actions/github';
-import { evaluate, failClosed, type GateDecision } from './gate/evaluate.js';
+import { evaluate, failClosed, isAuthorAllowed, type GateDecision } from './gate/evaluate.js';
 import { GitHubGateClient } from './github/client.js';
 import { JevClient } from './jev/client.js';
 import { loadPolicyFile, mergePolicy, parseOverride, PolicyError } from './policy/load.js';
@@ -79,7 +79,7 @@ export async function run(): Promise<void> {
   // Deterministic gates run before Jev: cheaper, and they are facts rather than
   // judgments. An untrusted author is exactly the case where a model's opinion
   // about the Issue text should not be what decides anything.
-  if (policy.allowed_authors.length > 0 && !policy.allowed_authors.includes(issue.author)) {
+  if (!isAuthorAllowed(policy, issue.author)) {
     decision = failClosed(
       `Issue author "${issue.author}" is not in the policy's allowed_authors list`,
     );

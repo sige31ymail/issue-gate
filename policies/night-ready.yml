@@ -1,0 +1,122 @@
+# Shared night-ready policy.
+#
+# This file holds every number the gate decides on. It is deliberately readable
+# and version-controlled: the final business logic must not live inside a model
+# prompt. Thresholds below are starting values, not validated production values.
+version: 1
+gate: night-ready
+
+labels:
+  # The label night-issues already consumes. If the established name differs,
+  # change it here rather than renaming the label in the target repositories.
+  night_ready: night-ready
+  needs_detail: needs-detail
+  needs_split: needs-split
+  human_review: human-review
+  blocked: blocked
+
+# Half-width of the uncertainty band straddling every threshold.
+#
+# A noul answer carries no confidence value, so nearness to the threshold is the
+# only signal that the model is undecided. A probability landing inside the band
+# yields HUMAN_REVIEW instead of READY.
+dead_band: 0.05
+
+# Only these Issue authors are evaluated. A READY result admits an Issue to an
+# unattended run with repository write access, so the set of people who can
+# trigger that is a deterministic check, never a model judgment.
+# An empty list allows every author.
+allowed_authors:
+  - sige31ymail
+
+# Issue bodies are truncated to this many characters before reaching Jev.
+max_issue_chars: 12000
+
+checks:
+  scope_small_enough:
+    kind: noul
+    min_yes_probability: 0.90
+    outcome: NEEDS_SPLIT
+    instructions: >-
+      Can this Issue reasonably be completed in a single unattended coding-agent
+      run, without a person intervening partway through?
+    criteria:
+      true: >-
+        The work is a single coherent change: a bounded set of files, one
+        feature or fix, with no need to pause for input.
+      false: >-
+        The Issue bundles several independent changes, spans a broad refactor,
+        or describes a project rather than a task.
+
+  acceptance_criteria_clear:
+    kind: noul
+    min_yes_probability: 0.90
+    outcome: NEEDS_DETAIL
+    instructions: >-
+      Are the acceptance criteria concrete enough that a reader could tell
+      whether the implementation succeeded?
+    criteria:
+      true: >-
+        The Issue states what the finished result must do, in specific terms.
+      false: >-
+        The Issue describes a problem or a wish without saying what "done"
+        looks like.
+
+  acceptance_criteria_verifiable:
+    kind: noul
+    min_yes_probability: 0.90
+    outcome: NEEDS_DETAIL
+    instructions: >-
+      Can completion be verified objectively — by tests, a command, a check, a
+      file's contents, or a UI verification that the Issue describes or that is
+      clearly inferable from it?
+    criteria:
+      true: >-
+        A concrete way to confirm the result exists or is obvious from the
+        Issue.
+      false: >-
+        Confirming the result would rely on someone's subjective judgment.
+
+  requires_human_decision:
+    kind: noul
+    max_yes_probability: 0.10
+    outcome: HUMAN_REVIEW
+    instructions: >-
+      Does implementing this Issue require a product, UX, architecture, or
+      security decision that the Issue has not already settled?
+    criteria:
+      true: >-
+        An open decision remains that a person would need to make.
+      false: >-
+        The approach is either specified or a matter of routine implementation
+        judgment.
+
+  dependency_blocked:
+    kind: noul
+    max_yes_probability: 0.10
+    outcome: BLOCKED
+    instructions: >-
+      Is this Issue blocked by another Issue, a change in another repository, a
+      missing credential, an unavailable environment, or any unresolved
+      prerequisite?
+    criteria:
+      true: >-
+        Something outside this Issue must land or be provided first.
+      false: >-
+        The work can start immediately with what the repository already has.
+
+  safe_for_unattended_execution:
+    kind: noul
+    min_yes_probability: 0.95
+    outcome: HUMAN_REVIEW
+    instructions: >-
+      Is this Issue safe to implement unattended, with no person watching the
+      run? Consider destructive operations, production or user data, secrets,
+      credentials, published releases, and anything irreversible.
+    criteria:
+      true: >-
+        The change is confined to the repository's own source and is reversible
+        by ordinary version control.
+      false: >-
+        The work touches production systems, real user data, secrets, published
+        artifacts, or anything a mistake would make hard to undo.

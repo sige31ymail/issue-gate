@@ -1,0 +1,45 @@
+name: 'issue-gate'
+description: 'Judge whether a GitHub Issue is ready for unattended night-time execution, and label it accordingly.'
+author: 'sige31ymail'
+
+branding:
+  icon: 'check-circle'
+  color: 'purple'
+
+inputs:
+  github-token:
+    description: 'Token used to read the Issue and write its labels and comment. Needs issues:write on the target repository.'
+    required: true
+    default: ${{ github.token }}
+  typesafe-api-key:
+    description: 'TypeSafe API key for Jev. Store it in Actions secrets; never commit it.'
+    required: true
+  issue-number:
+    description: 'Issue to evaluate. Defaults to the Issue from the triggering event.'
+    required: false
+  policy:
+    description: 'Path to the shared policy file. Defaults to the policy shipped with the action.'
+    required: false
+  override-path:
+    description: 'Path, inside the target repository, to an optional repository-specific policy override.'
+    required: false
+    default: '.github/issue-gate.yml'
+  model:
+    description: 'Jev model override. Defaults to the SDK default (jev-latest).'
+    required: false
+  dry-run:
+    description: 'Evaluate and log the result without writing labels or comments.'
+    required: false
+    default: 'false'
+
+outputs:
+  result:
+    description: 'READY, NEEDS_DETAIL, NEEDS_SPLIT, HUMAN_REVIEW, or BLOCKED.'
+  label-applied:
+    description: 'The night-ready label when the Issue passed, otherwise empty.'
+  night-ready:
+    description: '"true" when the Issue was admitted to the night queue.'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'

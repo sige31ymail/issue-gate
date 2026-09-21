@@ -1,0 +1,34 @@
+# Copy this into a target repository as .github/workflows/issue-gate.yml
+#
+# This is the entire per-repository footprint: the policy, the questions and the
+# decision logic all live in the shared issue-gate repository.
+name: Issue Gate
+
+on:
+  issues:
+    # `edited` matters: an Issue that was promoted and then weakened should lose
+    # its night-ready label again.
+    types: [opened, edited, reopened]
+  workflow_dispatch:
+    inputs:
+      issue-number:
+        description: 'Issue to evaluate'
+        required: true
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  # One evaluation per Issue at a time, so two runs cannot race on the labels.
+  group: issue-gate-${{ github.event.issue.number || inputs.issue-number }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: sige31ymail/issue-gate@v1
+        with:
+          typesafe-api-key: ${{ secrets.TYPESAFE_API_KEY }}
+          issue-number: ${{ github.event.issue.number || inputs.issue-number }}

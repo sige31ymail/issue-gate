@@ -98,6 +98,23 @@ No credentials, no requests, and no model variation mixed into the comparison.
 `fixtures/hexbound/` holds the nine recordings the shipped thresholds were set
 from, and `tests/replay.test.ts` pins the label each one produces.
 
+A repository that adds its own checks runs a different policy from the one this
+repository ships, so `--override` merges its file in and answers what that
+repository actually does:
+
+```
+npm run gate:local -- --replay fixtures/hexbound/issue-*.json \
+  --override fixtures/hexbound/override.yml
+```
+
+Answering without it is how a calibration can measure clean and change nothing.
+On 2026-09-21 the shared policy was retuned to 8 of 9 on this corpus while
+hexbound's own override still enforced a check that failed on all nine, so the
+policy that actually ran there scored 3 of 9 and refused six Issues that went on
+to open a pull request. An override cannot remove a shared check, which reads as
+being unable to weaken the gate — but the most severe failing outcome wins, so
+one added check that fails everywhere decides everything.
+
 Add `--outcomes` to score those verdicts against what the night run actually
 did:
 

@@ -147,3 +147,96 @@ export function renderReplayTable(results: ReplayResult[]): string {
 
   return [line(headers), ...rows.map(line)].join('\n');
 }
+
+/** What the night queue actually did with an Issue. */
+export interface Outcome {
+  result: 'succeeded' | 'failed' | 'inconclusive';
+  /** Why a failure happened; null on success. */
+  cause: 'dependency' | 'tool_limit' | 'runner' | null;
+  evidence: string;
+}
+
+export type Outcomes = Record<string, Outcome>;
+
+export interface Scored {
+  issueNumber: number;
+  admitted: boolean;
+  outcome: Outcome;
+  /** Right when admitting an Issue that succeeded, or refusing one that failed. */
+  correct: boolean | null;
+}
+
+/** Read the outcomes file that sits beside a corpus. */
+export function parseOutcomes(text: string, source: string): Outcomes {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch (error) {
+    throw new ReplayError(`${source}: not valid JSON: ${(error as Error).message}`);
+  }
+  const outcomes = (raw as { outcomes?: unknown })?.outcomes;
+  if (!outcomes || typeof outcomes !== 'object') {
+    throw new ReplayError(`${source}: no "outcomes" object`);
+  }
+  return outcomes as Outcomes;
+}
+
+/**
+ * Set replayed verdicts against what actually happened.
+ *
+ * An Issue whose run was inconclusive scores neither way. #218's queue entry
+ * failed on a runner fault while its implementation completed, so counting it
+ * as either would be counting the runner's bug as the gate's.
+ */
+export function score(results: ReplayResult[], outcomes: Outcomes): Scored[] {
+  const scored: Scored[] = [];
+  for (const result of results) {
+    const outcome = outcomes[String(result.issueNumber)];
+    if (!outcome) continue;
+    const admitted = result.decision.outcome === 'READY';
+    scored.push({
+      issueNumber: result.issueNumber,
+      admitted,
+      outcome,
+      correct:
+        outcome.result === 'inconclusive' ? null : admitted === (outcome.result === 'succeeded'),
+    });
+  }
+  return scored;
+}
+
+/**
+ * Report how a policy would have done, split by what it could have known.
+ *
+ * A failure the Issue text cannot reveal — the runner exhausting its tool
+ * budget, or losing a worker's output — is not the gate's to catch. Counting
+ * those against a policy invites tightening thresholds until they block real
+ * work, which is how the first calibration produced a gate that admitted
+ * nothing.
+ */
+export function renderScoreboard(scored: Scored[]): string {
+  const lines: string[] = [];
+  for (const s of scored) {
+    const verdict = s.correct === null ? 'n/a ' : s.correct ? 'ok  ' : 'MISS';
+    const cause = s.outcome.cause ? ` (${s.outcome.cause})` : '';
+    lines.push(
+      `${verdict} #${s.issueNumber}  ${s.admitted ? 'admitted' : 'refused '}  ` +
+        `${s.outcome.result}${cause}`,
+    );
+  }
+
+  const judged = scored.filter((s) => s.correct !== null);
+  const right = judged.filter((s) => s.correct).length;
+  const admittedAndFailed = judged.filter((s) => s.admitted && s.outcome.result === 'failed');
+  const refusedAndSucceeded = judged.filter((s) => !s.admitted && s.outcome.result === 'succeeded');
+  const knowable = admittedAndFailed.filter((s) => s.outcome.cause === 'dependency');
+
+  lines.push(
+    '',
+    `${right}/${judged.length} correct`,
+    `admitted but failed: ${admittedAndFailed.length}` +
+      ` (${knowable.length} from a cause the Issue text shows)`,
+    `refused but would have succeeded: ${refusedAndSucceeded.length}`,
+  );
+  return lines.join('\n');
+}

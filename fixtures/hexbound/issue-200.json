@@ -2,17 +2,17 @@
   "gate_version": 1,
   "result": "NEEDS_SPLIT",
   "repository": "sige31ymail/hexbound",
-  "issue_number": 221,
+  "issue_number": 200,
   "checks": {
-    "scope_small_enough": 0.37,
-    "acceptance_criteria_clear": 0.7,
-    "acceptance_criteria_verifiable": 0.52,
-    "requires_human_decision": 0.74,
+    "scope_small_enough": 0.11,
+    "acceptance_criteria_clear": 0.83,
+    "acceptance_criteria_verifiable": 0.82,
+    "requires_human_decision": 0.87,
     "dependency_blocked": 0.13,
-    "safe_for_unattended_execution": 0.82,
-    "failure_is_caught_by_checks": 0.46,
-    "change_is_localized": 0.95,
-    "executor_can_handle": 0.26
+    "safe_for_unattended_execution": 0.59,
+    "failure_is_caught_by_checks": 0.49,
+    "change_is_localized": 0.3,
+    "executor_can_handle": 0.13
   },
   "recorded_only": [
     "executor_can_handle"

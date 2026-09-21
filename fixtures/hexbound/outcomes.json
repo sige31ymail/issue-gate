@@ -1,0 +1,54 @@
+{
+  "_comment": [
+    "What the night queue actually did with each Issue, from the run of",
+    "2026-09-21. This is the ground truth the recordings beside it are scored",
+    "against: a gate verdict is a prediction, and this says whether it was right.",
+    "",
+    "The outcome recorded here is whether a pull request implementing the Issue",
+    "exists, not what the queue reported. The two disagree: the queue called",
+    "#218 and #224 failures, and both produced a PR anyway. Scoring against the",
+    "queue's own report would have taught the gate to predict the runner's",
+    "bookkeeping rather than whether the work got done.",
+    "",
+    "'cause' names why a failure happened, because only some failures are",
+    "knowable from an Issue at all. A dependency on unmerged work is visible in",
+    "the Issue text. The runner exhausting its 40-call tool budget is not — that",
+    "is a property of the executor, and a check that appears to predict it is",
+    "reading noise.",
+    "",
+    "hexbound runs no CI on pull requests, so 'succeeded' means a PR implementing",
+    "the Issue was opened, not that it has been reviewed or merged."
+  ],
+  "run": "night_issue 2026-09-21, sige31ymail/hexbound, 9 Issues, 6 produced a PR",
+  "outcomes": {
+    "200": { "result": "succeeded", "cause": null, "evidence": "PR #228" },
+    "218": {
+      "result": "succeeded",
+      "cause": null,
+      "evidence": "PR #232, opened after the queue had already recorded worker_output_invalid: the parent task returned without its final JSON while the delegated child kept running and finished the work"
+    },
+    "219": {
+      "result": "failed",
+      "cause": "dependency",
+      "evidence": "no changes, no PR: the Master Passive foundation from #218 was not on main"
+    },
+    "220": {
+      "result": "failed",
+      "cause": "dependency",
+      "evidence": "no changes, no PR: needed #218 and #219, neither merged"
+    },
+    "221": { "result": "succeeded", "cause": null, "evidence": "PR #229" },
+    "222": {
+      "result": "failed",
+      "cause": "tool_limit",
+      "evidence": "cancelled at the 40-call tool limit mid-run; worktree preserved, no commit, no PR"
+    },
+    "224": {
+      "result": "succeeded",
+      "cause": null,
+      "evidence": "PR #233, opened after the queue recorded a tool-limit cancellation: 901 tests and typecheck had already passed, and the cancellation landed during browser verification rather than during the implementation"
+    },
+    "223": { "result": "succeeded", "cause": null, "evidence": "PR #230" },
+    "225": { "result": "succeeded", "cause": null, "evidence": "PR #231" }
+  }
+}

@@ -56,7 +56,7 @@ on nearly every Issue, pin the result there, and make `NEEDS_SPLIT` and
 
 So a check whose failure the Issue's author can fix maps to `NEEDS_DETAIL` or
 `NEEDS_SPLIT`, and `HUMAN_REVIEW` is reserved for the ones that genuinely need a
-person — today, only `safe_for_unattended_execution` and the fail-closed paths.
+person — today, only the fail-closed paths.
 
 ### Recording a check before trusting it
 
@@ -95,8 +95,47 @@ npm run gate:local -- --replay fixtures/hexbound/*.json
 ```
 
 No credentials, no requests, and no model variation mixed into the comparison.
-`fixtures/hexbound/` holds the six recordings the shipped thresholds were set
+`fixtures/hexbound/` holds the nine recordings the shipped thresholds were set
 from, and `tests/replay.test.ts` pins the label each one produces.
+
+Add `--outcomes` to score those verdicts against what the night run actually
+did:
+
+```
+npm run gate:local -- --replay fixtures/hexbound/*.json \
+  --outcomes fixtures/hexbound/outcomes.json
+```
+
+That prints a scoreboard instead of a label table, and keeps the two kinds of
+error apart: an Issue refused that would have succeeded is work lost silently,
+while an Issue admitted that failed costs a closed PR.
+
+### What the outcomes showed
+
+All nine Issues ran on 2026-09-21 with the gate in shadow mode, and six produced
+a pull request. Of nine checks, exactly one predicted anything.
+`dependency_blocked` found the real chain: 0.75 and 0.83 for the two Issues that
+failed waiting on unmerged work, 0.24 or below for everything else.
+
+Three checks are inverted. The two acceptance-criteria questions gave the
+failures their highest marks in the set, 0.93-0.95 and 0.89-0.93 — the
+best-specified Issues were the ones that did not get done.
+`requires_human_decision` averaged 0.60 across the successes and 0.35 across the
+failures, so its bar refuses the wrong half. The rest carried no signal at all.
+
+Every check but `dependency_blocked` is therefore recorded and not enforced.
+They keep being asked and keep landing in the payload, and any of them earns a
+vote once its answers start tracking outcomes. The recalibrated policy scores
+8 of 9 with nothing refused that would have succeeded; the previous one scored
+3 of 9 and refused six Issues that went on to produce pull requests.
+
+The one remaining miss came from the executor rather than the Issue: it
+exhausted its 40-call tool budget mid-run. No question about Issue text can
+predict that.
+
+Ground truth was read from the repository's pull requests, not from the queue's
+own report, because the two disagree. The queue called two Issues failures that
+had in fact produced a PR. See [`docs/architecture.md`](docs/architecture.md).
 
 ### Fail closed
 

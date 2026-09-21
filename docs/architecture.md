@@ -140,32 +140,79 @@ the change under test with the model's own run-to-run variation and costs a
 request per experiment; `--replay` removes both and needs no credentials.
 
 The corpus is collected from the gate's own output: the audit comment already
-carries every probability as JSON. `fixtures/hexbound/` holds the six recordings
-the current thresholds were set from, and the tests pin the label each produces,
-so a future retune has to state what it does to real Issues.
+carries every probability as JSON. `fixtures/hexbound/` holds the nine
+recordings the current thresholds were set from, and the tests pin the label
+each produces, so a future retune has to state what it does to real Issues.
 
-## What the first corpus measured
+`--outcomes` scores a replay against what the night run actually did.
+`fixtures/hexbound/outcomes.json` records, per Issue, whether the run succeeded
+or failed, the cause of a failure, and the evidence for that reading. A replay
+carrying it prints a scoreboard rather than a label table, and separates the two
+errors that are not equally bad: an Issue refused that would have succeeded is
+work lost silently, while an Issue admitted that failed costs a closed PR. It
+also counts how many of the admitted-but-failed cases had a cause the Issue text
+could have shown, since a failure the text cannot predict is not the gate's to
+catch.
 
-Six Issues from sige31ymail/hexbound, three narrow and under-specified
-(#221, #224, #225) and three well-specified but large and interdependent
-(#218, #219, #220).
+## What the corpus measured
 
-- `acceptance_criteria_clear` separated most cleanly: 0.64-0.80 where the Issue
-  had no completion section, 0.92-0.95 where it listed criteria.
-- `dependency_blocked` found a real chain. #219 and #220 both wait on #218, and
-  scored 0.83 and 0.75 against 0.05-0.24 for the independent Issues.
-- `requires_human_decision` discriminated too, 0.25-0.27 against 0.55-0.76. Only
-  its threshold and its outcome mapping were wrong.
-- `safe_for_unattended_execution` did not discriminate at all. All six Issues are
-  source-only changes to a browser game, and it returned 0.71-0.93 — tracking
-  Issue size rather than risk, with the large features scoring lowest. Its
-  threshold is provisional and deliberately permissive so it cannot mask the
-  checks that work. The question needs rewriting and re-measuring before that
-  number means anything.
+The first pass set thresholds from six Issues with no ground truth behind them,
+reading each check's spread as evidence that it discriminated. On 2026-09-21 all
+nine Issues ran through the night queue in shadow mode, and the verdicts could
+finally be compared against what happened. Of nine checks, one predicted
+anything.
 
-None of the six reached `READY`, which is the right answer: none of them is both
-small enough for one run and specified well enough to verify. That is a finding
-about the Issues as much as about the gate.
+- `dependency_blocked` found the real chain. The two Issues that failed waiting
+  on unmerged work scored 0.75 and 0.83; every other Issue scored 0.24 or below,
+  including the third failure, which failed for an unrelated reason.
+- `acceptance_criteria_clear` and `acceptance_criteria_verifiable` are inverted.
+  They gave the three failures 0.93-0.95 and 0.89-0.93, their highest marks in
+  the set. The best-specified Issues were the ones that did not get done, which
+  makes sense once stated: a large, carefully specified Issue is carefully
+  specified because it is large.
+- `requires_human_decision` is inverted too, averaging 0.60 across the successes
+  and 0.35 across the failures, so its maximum bar refuses the wrong half.
+- `scope_small_enough` overlaps completely, 0.11-0.81 on successes against
+  0.30-0.51 on failures, and gave its lowest score of all to an Issue that
+  finished.
+- `safe_for_unattended_execution` returned 0.59-0.93 across nine changes that
+  were all equally safe: 0.81 mean on the successes, 0.80 on the failures.
+- The three repository-local checks hexbound added, `executor_can_handle` among
+  them, separated nothing either, which is the argument for `enforced: false`
+  rather than against adding them.
+
+So every check but `dependency_blocked` is now recorded and not enforced. They
+keep being asked and keep landing in the payload, and any of them earns a vote
+the moment its answers start tracking outcomes.
+
+Measured on the nine recordings, the recalibrated policy gets 8 of 9 right with
+nothing refused that would have succeeded. The previous policy got 3 of 9 and
+refused six Issues that went on to produce pull requests — it admitted nothing
+at all, which scores well on the failures for no reason worth keeping.
+
+### What the failures actually were
+
+Two of the three were dependencies, which is an Issue property and the one thing
+the gate caught. The third was the executor exhausting its 40-call tool budget
+mid-run, which is a property of the runner. No question asked about Issue text
+can predict that, and a check that appears to is reading Issue length — which is
+the mistake `scope_small_enough` already makes.
+
+### The queue's own report is not ground truth
+
+The queue recorded five failures; six Issues produced a pull request. It called
+#218 `worker_output_invalid` because the parent task returned without its final
+JSON, while the child it had delegated to kept running and opened PR #232
+afterwards. It called #224 a tool-limit cancellation, but the cancellation
+landed during browser verification, after the implementation and its tests were
+done, and PR #233 followed.
+
+The first version of `outcomes.json` took the queue's report at face value and
+scored two successes as failures. Both corrections went to Issues the gate had
+admitted, so the error made the gate look worse than it was — but it could as
+easily have run the other way, and a check tuned against it would have learned
+to predict the runner's bookkeeping rather than whether the work got done.
+Ground truth here is whether a pull request implementing the Issue exists.
 
 ## Comparisons carry a tolerance
 
@@ -211,12 +258,21 @@ marker across repositories.
 
 ## Open questions
 
-- **Threshold calibration.** Every number in the shipped policy is a starting
-  value, now moved once against a corpus of six. Six checks ANDed still admit
-  few Issues, and the corpus contains no example that should pass, so the
-  thresholds are bounded from one side only. That is the intended direction of error for a first run, but
-  the point of the audit payload is to replace guesses with data.
+- **One check decides.** `dependency_blocked` is the only question whose answers
+  have tracked outcomes, so it is the only one enforced. That is honest about
+  the evidence and thin as a gate: an Issue that is genuinely too vague to
+  implement will be admitted today. The repair is more outcomes, not more
+  confident thresholds — the previous policy's numbers were all defensible when
+  written and all wrong when measured.
+- **The runner's failures are invisible here.** One of three failures came from
+  the executor, not the Issue. A gate reading Issue text cannot see a tool-call
+  limit coming, and a check that tries will learn to reject long Issues, which
+  is the mistake `scope_small_enough` already made.
+- **Ground truth costs more than it looks.** It was collected by hand from the
+  repository's pull requests, because the queue's own success and failure
+  reports disagreed with them on two of nine Issues. A larger corpus needs that
+  reconciliation automated, or it will encode the runner's bookkeeping.
 - **`safe_for_unattended_execution` maps to `HUMAN_REVIEW`.** It could argue for
   `BLOCKED`. `HUMAN_REVIEW` was chosen because the Issue is usually actionable
   once a person looks at it, whereas `BLOCKED` implies waiting on something
-  external.
+  external. The check is unenforced, so the mapping is not currently load-bearing.

@@ -4,17 +4,24 @@
   "repository": "sige31ymail/hexbound",
   "issue_number": 220,
   "checks": {
-    "scope_small_enough": 0.29,
-    "acceptance_criteria_clear": 0.92,
+    "scope_small_enough": 0.3,
+    "acceptance_criteria_clear": 0.93,
     "acceptance_criteria_verifiable": 0.89,
-    "requires_human_decision": 0.55,
+    "requires_human_decision": 0.54,
     "dependency_blocked": 0.75,
-    "safe_for_unattended_execution": 0.76
+    "safe_for_unattended_execution": 0.78,
+    "failure_is_caught_by_checks": 0.44,
+    "change_is_localized": 0.95,
+    "executor_can_handle": 0.28
   },
-  "label_applied": "blocked",
+  "recorded_only": [
+    "executor_can_handle"
+  ],
+  "mode": "shadow",
+  "label_applied": "night-queue",
   "policy_version": "v1",
   "model": "jev-1.13.0",
-  "run_url": "https://github.com/sige31ymail/hexbound/actions/runs/35589692958",
-  "evaluated_at": "2026-09-21T10:37:10.796Z",
+  "run_url": null,
+  "evaluated_at": "2026-09-21T11:37:00.000Z",
   "error": null
 }

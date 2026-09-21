@@ -21,7 +21,14 @@ import { GitHubGateClient } from './github/client.js';
 import { JevClient } from './jev/client.js';
 import { loadPolicyFile, mergePolicy, parseOverride } from './policy/load.js';
 import { renderComment } from './render.js';
-import { renderReplayTable, replayFile } from './replay.js';
+import {
+  parseOutcomes,
+  renderReplayTable,
+  renderScoreboard,
+  replayFile,
+  score,
+} from './replay.js';
+import { readFile } from 'node:fs/promises';
 
 interface Args {
   repo: string;
@@ -34,7 +41,7 @@ interface Args {
 const USAGE =
   'usage:\n' +
   '  gate:local --repo <owner/name> --issue <number> [--policy <path>] [--json]\n' +
-  '  gate:local --replay <payload.json> [...] [--policy <path>] [--json]';
+  '  gate:local --replay <payload.json> [...] [--policy <path>] [--outcomes <path>] [--json]';
 
 function get(argv: string[], name: string): string | undefined {
   const index = argv.indexOf(`--${name}`);
@@ -97,6 +104,15 @@ async function replay(argv: string[], paths: string[]): Promise<void> {
 
   const ready = results.filter((r) => r.decision.outcome === 'READY').length;
   process.stdout.write(`\n${ready}/${results.length} would reach READY\n`);
+
+  // --outcomes turns the replay from "what would this policy say" into "would
+  // it have been right", which is the only question thresholds can be settled
+  // by. Without it a policy can only be compared against another guess.
+  const outcomesPath = get(argv, 'outcomes');
+  if (!outcomesPath) return;
+
+  const outcomes = parseOutcomes(await readFile(outcomesPath, 'utf8'), outcomesPath);
+  process.stdout.write(`\n${renderScoreboard(score(results, outcomes))}\n`);
 }
 
 async function main(): Promise<void> {

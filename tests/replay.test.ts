@@ -1,8 +1,16 @@
-import { readdir } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { parseRecorded, replayFile, replayOne, ReplayError } from '../src/replay.js';
+import {
+  parseOutcomes,
+  parseRecorded,
+  replayFile,
+  replayOne,
+  ReplayError,
+  score,
+  type ReplayResult,
+} from '../src/replay.js';
 import { loadPolicyFile } from '../src/policy/load.js';
 import type { Policy } from '../src/policy/types.js';
 
@@ -69,54 +77,82 @@ describe('replayOne', () => {
 });
 
 describe('the hexbound corpus', () => {
-  it('has a fixture for every Issue the gate has run on', async () => {
-    const files = await readdir(join(repoRoot, 'fixtures', 'hexbound'));
-    expect(files.filter((f) => f.endsWith('.json')).sort()).toEqual([
-      'issue-218.json',
-      'issue-219.json',
-      'issue-220.json',
-      'issue-221.json',
-      'issue-224.json',
-      'issue-225.json',
-    ]);
-  });
+  const outcomesPath = join(repoRoot, 'fixtures', 'hexbound', 'outcomes.json');
+  const issues = [200, 218, 219, 220, 221, 222, 223, 224, 225];
 
-  // The routing these six recordings produce is the whole argument for the
-  // thresholds in the shipped policy. Pinned so a retune has to state what it
-  // does to real Issues rather than only to the numbers.
-  const expected: Record<number, string> = {
-    218: 'needs-split', // large foundation, well specified, wants splitting
-    219: 'blocked', //     waits on #218
-    220: 'blocked', //     waits on #218
-    221: 'needs-split', // vague visual work, not a single run
-    224: 'needs-detail', // narrow, but states no completion criteria
-    225: 'needs-split', //  broad feature with no criteria
+  const replayAll = async (only: number[] = issues): Promise<ReplayResult[]> => {
+    const policy = await shippedPolicy();
+    return Promise.all(only.map((n) => replayFile(policy, fixture(`issue-${n}.json`))));
   };
 
-  for (const [issue, label] of Object.entries(expected)) {
-    it(`routes #${issue} to ${label}`, async () => {
-      const result = await replayFile(await shippedPolicy(), fixture(`issue-${issue}.json`));
-      expect(result.missing).toEqual([]);
-      expect(result.label).toBe(label);
-    });
-  }
+  it('has a recording and an outcome for every Issue the night queue ran', async () => {
+    const files = await readdir(join(repoRoot, 'fixtures', 'hexbound'));
+    expect(files.filter((f) => f.startsWith('issue-')).sort()).toEqual(
+      issues.map((n) => `issue-${n}.json`),
+    );
+    const outcomes = parseOutcomes(await readFile(outcomesPath, 'utf8'), 'outcomes');
+    expect(Object.keys(outcomes).map(Number).sort((a, b) => a - b)).toEqual(issues);
+  });
 
-  it('admits none of them, because none is both small and well specified', async () => {
-    const policy = await shippedPolicy();
-    for (const issue of Object.keys(expected)) {
-      const result = await replayFile(policy, fixture(`issue-${issue}.json`));
-      expect(result.decision.outcome).not.toBe('READY');
+  it('answers every check the policy asks for', async () => {
+    for (const result of await replayAll()) {
+      expect(result.missing).toEqual([]);
     }
   });
 
-  it('reaches a label other than human-review on every one', async () => {
-    // The fault this corpus exposed: a quality check mapped to HUMAN_REVIEW
-    // failed on every feature Issue, so the result was pinned there and the two
-    // labels naming a concrete repair could never appear.
-    const policy = await shippedPolicy();
-    for (const issue of Object.keys(expected)) {
-      const result = await replayFile(policy, fixture(`issue-${issue}.json`));
-      expect(result.label).not.toBe('human-review');
-    }
+  // The only two Issues that failed for a reason their text revealed.
+  it('refuses the two Issues that waited on unmerged work, and only those', async () => {
+    const refused = (await replayAll())
+      .filter((r) => r.decision.outcome !== 'READY')
+      .map((r) => r.issueNumber);
+    expect(refused).toEqual([219, 220]);
+  });
+
+  it('refuses nothing that went on to succeed', async () => {
+    // The fault the previous policy had: it blocked all six Issues that
+    // produced a pull request. A gate that admits nothing is not a safe gate,
+    // it is an absent one that nobody can tell is broken.
+    const scored = score(await replayAll(), parseOutcomes(await readFile(outcomesPath, 'utf8'), 'o'));
+    const wronglyRefused = scored.filter((s) => !s.admitted && s.outcome.result === 'succeeded');
+    expect(wronglyRefused).toEqual([]);
+  });
+
+  it('is wrong only where the Issue text could not have told it', async () => {
+    const scored = score(await replayAll(), parseOutcomes(await readFile(outcomesPath, 'utf8'), 'o'));
+    const misses = scored.filter((s) => s.correct === false);
+    // The runner exhausting its tool budget, which is a property of the
+    // executor and not of the Issue.
+    expect(misses.map((m) => m.outcome.cause)).toEqual(['tool_limit']);
+  });
+
+  it('reads outcomes from the pull requests, not from the queue', async () => {
+    // The queue called #218 and #224 failures. Both produced a pull request:
+    // #218's parent task returned without its final JSON while the child it
+    // had delegated to finished the work, and #224 was cancelled during
+    // browser verification with the implementation and its tests already done.
+    // Scored against the queue's report instead, this corpus would teach a
+    // check to predict the runner's bookkeeping.
+    const outcomes = parseOutcomes(await readFile(outcomesPath, 'utf8'), 'o');
+    expect(outcomes[218]?.result).toBe('succeeded');
+    expect(outcomes[224]?.result).toBe('succeeded');
+  });
+
+  it('scores an inconclusive run neither way', async () => {
+    // No Issue in this corpus is inconclusive, but the category has to keep
+    // working: a run whose result cannot be read is not evidence either way,
+    // and counting it as one is how a corpus acquires a fact nobody measured.
+    const [result] = await replayAll([200]);
+    const scored = score([result!], { 200: { result: 'inconclusive', cause: 'runner', evidence: 'n/a' } });
+    expect(scored[0]?.correct).toBeNull();
+  });
+});
+
+describe('parseOutcomes', () => {
+  it('rejects a file with no outcomes', () => {
+    expect(() => parseOutcomes(JSON.stringify({ run: 'x' }), 'o')).toThrow(ReplayError);
+  });
+
+  it('rejects unreadable JSON with the source name', () => {
+    expect(() => parseOutcomes('{', 'outcomes.json')).toThrow(/outcomes\.json/);
   });
 });

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { classify, evaluate, failClosed, isAuthorAllowed } from '../src/gate/evaluate.js';
+import {
+  classify,
+  desiredLabels,
+  evaluate,
+  failClosed,
+  isAuthorAllowed,
+} from '../src/gate/evaluate.js';
 import type { CheckPolicy, Policy } from '../src/policy/types.js';
 
 const labels = {
@@ -182,5 +188,26 @@ describe('isAuthorAllowed', () => {
 
   it('rejects an empty author when a list is configured', () => {
     expect(isAuthorAllowed(withAuthors(['sige31ymail']), '')).toBe(false);
+  });
+});
+
+describe('desiredLabels', () => {
+  const p = policy({ scope_small_enough: minCheck });
+
+  it('names one label for every outcome, so the audit record is never "none"', () => {
+    // The first live run labelled an Issue human-review and then reported
+    // "Label applied: none", because the audit value was derived a second time
+    // and only filled in for READY.
+    const outcomes = ['READY', 'NEEDS_DETAIL', 'NEEDS_SPLIT', 'HUMAN_REVIEW', 'BLOCKED'] as const;
+    for (const outcome of outcomes) {
+      const applied = desiredLabels(p, { outcome, checks: [] });
+      expect(applied).toHaveLength(1);
+      expect(applied[0]).toBeTruthy();
+    }
+  });
+
+  it('uses the night-queue label only for READY', () => {
+    expect(desiredLabels(p, { outcome: 'READY', checks: [] })).toEqual(['night-ready']);
+    expect(desiredLabels(p, { outcome: 'BLOCKED', checks: [] })).toEqual(['blocked']);
   });
 });

@@ -1,11 +1,17 @@
 import { resolve } from 'node:path';
 import * as core from '@actions/core';
 import { context, getOctokit } from '@actions/github';
-import { evaluate, failClosed, isAuthorAllowed, type GateDecision } from './gate/evaluate.js';
+import {
+  desiredLabels,
+  evaluate,
+  failClosed,
+  isAuthorAllowed,
+  type GateDecision,
+} from './gate/evaluate.js';
 import { GitHubGateClient } from './github/client.js';
 import { JevClient } from './jev/client.js';
 import { loadPolicyFile, mergePolicy, parseOverride, PolicyError } from './policy/load.js';
-import { labelForOutcome, managedLabels, type Policy } from './policy/types.js';
+import { managedLabels } from './policy/types.js';
 import { renderComment, type AuditContext } from './render.js';
 
 /**
@@ -50,13 +56,6 @@ function readInputs(): Inputs {
     model: core.getInput('model'),
     dryRun: core.getBooleanInput('dry-run'),
   };
-}
-
-/** Labels the Issue should carry after this run. */
-function desiredLabels(policy: Policy, decision: GateDecision): string[] {
-  return decision.outcome === 'READY'
-    ? [policy.labels.night_ready]
-    : [labelForOutcome(policy.labels, decision.outcome)];
 }
 
 export async function run(): Promise<void> {
@@ -115,7 +114,10 @@ export async function run(): Promise<void> {
   }
 
   const labels = desiredLabels(policy, decision);
-  const labelApplied = decision.outcome === 'READY' ? policy.labels.night_ready : null;
+  // Every outcome carries a label, READY included. Reporting only the READY
+  // label left the audit record claiming "none" on an Issue that had just been
+  // labelled human-review.
+  const labelApplied = labels[0] ?? null;
 
   const auditContext: AuditContext = {
     repository,

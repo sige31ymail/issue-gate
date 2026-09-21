@@ -43,6 +43,12 @@ rather than `READY`.
 so the arithmetic is never hidden. Set `dead_band: 0` to compare against the raw
 threshold instead.
 
+It also means a threshold can be written out of reach: `min_yes_probability:
+0.95` with the same dead band passes only at 1.00, and the gate then never
+returns `READY` while every audit line still reads as a plausible `AMBIGUOUS`.
+Policies whose passing range has collapsed to a single point are rejected at
+load time rather than failing silently.
+
 ### Fail closed
 
 Anything that prevents a clean decision — Jev unreachable, a malformed policy, a

@@ -94,9 +94,9 @@ describe('mergePolicy', () => {
   it('retunes a single threshold without touching the rest of the check', () => {
     const policy = validatePolicy(clone(base));
     const merged = mergePolicy(policy, {
-      checks: { scope_small_enough: { min_yes_probability: 0.95 } },
+      checks: { scope_small_enough: { min_yes_probability: 0.85 } },
     });
-    expect(merged.checks['scope_small_enough']?.min_yes_probability).toBe(0.95);
+    expect(merged.checks['scope_small_enough']?.min_yes_probability).toBe(0.85);
     expect(merged.checks['scope_small_enough']?.outcome).toBe('NEEDS_SPLIT');
     expect(merged.checks['scope_small_enough']?.instructions).toBe('q');
   });
@@ -150,13 +150,13 @@ describe('mergePolicy', () => {
 
   it('leaves the base policy unmutated', () => {
     const policy = validatePolicy(clone(base));
-    mergePolicy(policy, { checks: { scope_small_enough: { min_yes_probability: 0.99 } } });
+    mergePolicy(policy, { checks: { scope_small_enough: { min_yes_probability: 0.94 } } });
     expect(policy.checks['scope_small_enough']?.min_yes_probability).toBe(0.9);
   });
 
   it('cannot drop a shared check', () => {
     const policy = validatePolicy(clone(base));
-    const merged = mergePolicy(policy, { dead_band: 0.2 });
+    const merged = mergePolicy(policy, { dead_band: 0.08 });
     expect(Object.keys(merged.checks).sort()).toEqual(['dependency_blocked', 'scope_small_enough']);
   });
 });
@@ -171,6 +171,49 @@ describe('parseOverride', () => {
 
   it('parses a small override', () => {
     expect(parseOverride('dead_band: 0.1\n')).toEqual({ dead_band: 0.1 });
+  });
+});
+
+describe('threshold reachability', () => {
+  it('rejects a min threshold the dead band pushes to 1.00', () => {
+    const raw = clone(base);
+    raw.checks.scope_small_enough.min_yes_probability = 0.95;
+    expect(() => validatePolicy(raw)).toThrow(/no answer reaches/);
+  });
+
+  it('rejects a max threshold the dead band pushes to 0.00', () => {
+    const raw = clone(base);
+    raw.checks.dependency_blocked.max_yes_probability = 0.05;
+    expect(() => validatePolicy(raw)).toThrow(/no answer reaches/);
+  });
+
+  it('accepts a threshold that lands just inside the range', () => {
+    const raw = clone(base);
+    raw.checks.scope_small_enough.min_yes_probability = 0.94;
+    expect(validatePolicy(raw).checks['scope_small_enough']?.min_yes_probability).toBe(0.94);
+  });
+
+  it('rejects an override that widens the dead band past a threshold', () => {
+    const policy = validatePolicy(clone(base));
+    // The check itself is untouched; only the dead band moves, which is exactly
+    // the case a per-check validation would miss.
+    expect(() => mergePolicy(policy, { dead_band: 0.11 })).toThrow(/no answer reaches/);
+  });
+
+  it('rejects an additional check that cannot pass', () => {
+    const policy = validatePolicy(clone(base));
+    expect(() =>
+      mergePolicy(policy, {
+        additional_checks: {
+          never_passes: {
+            kind: 'noul',
+            min_yes_probability: 0.96,
+            outcome: 'HUMAN_REVIEW',
+            instructions: 'q',
+          },
+        },
+      }),
+    ).toThrow(/no answer reaches/);
   });
 });
 
@@ -193,6 +236,20 @@ describe('the shipped policy', () => {
     // silent drift away from what the night queue reads.
     const policy = await loadPolicyFile(new URL('../policies/night-ready.yml', import.meta.url).pathname);
     expect(policy.labels.night_ready).toBe('night-queue');
+  });
+
+  it('keeps every threshold reachable once the dead band is added', async () => {
+    // The first live run returned 0.91 on safe_for_unattended_execution and the
+    // gate still refused it: the bar had been 0.95 + 0.05 = 1.00. Pinned so the
+    // gate cannot silently become one that never says READY.
+    const policy = await loadPolicyFile(new URL('../policies/night-ready.yml', import.meta.url).pathname);
+    for (const check of Object.values(policy.checks)) {
+      if (check.min_yes_probability !== undefined) {
+        expect(check.min_yes_probability + policy.dead_band).toBeLessThan(1);
+      } else {
+        expect((check.max_yes_probability as number) - policy.dead_band).toBeGreaterThan(0);
+      }
+    }
   });
 
   it('lets the Claude app through, since it writes most of the Issues', async () => {

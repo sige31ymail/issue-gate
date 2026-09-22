@@ -199,6 +199,63 @@ describe("a repository's merged policy", () => {
   });
 });
 
+describe('the mawshift corpus', () => {
+  // A second corpus, collected 2026-09-22 in dry-run without writing to any
+  // Issue (the gate reads Issue text, never the runner, so collecting its
+  // answers after the run does not leak the result into the prediction). It is
+  // success-heavy where hexbound was failure-heavy: 15 of 17 Issues produced
+  // usable work, so it tests the gate against the error hexbound could not —
+  // refusing something that would have succeeded.
+  const mawshift = (name: string): string => join(repoRoot, 'fixtures', 'mawshift', name);
+  const issues = [17, 18, 22, 23, 24, 25, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37];
+  const outcomesPath = mawshift('outcomes.json');
+
+  const replayAll = async (): Promise<ReplayResult[]> => {
+    const policy = await shippedPolicy();
+    return Promise.all(issues.map((n) => replayFile(policy, mawshift(`issue-${n}.json`))));
+  };
+
+  it('has a recording and an outcome for every Issue the night queue ran', async () => {
+    const outcomes = parseOutcomes(await readFile(outcomesPath, 'utf8'), 'm');
+    expect(Object.keys(outcomes).map(Number).sort((a, b) => a - b)).toEqual(issues);
+    for (const n of issues) {
+      await expect(readFile(mawshift(`issue-${n}.json`), 'utf8')).resolves.toBeTruthy();
+    }
+  });
+
+  it('refuses nothing that produced a pull request, except self-declared blocks', async () => {
+    // The whole point of a success-heavy corpus. The only refusals left are #30
+    // (its worker stopped on an unmerged-code dependency), #35 (its body says
+    // "do not queue until #27's spec is transcribed", and #27 produced
+    // nothing), and #33 (stacked, its CI never ran, so success is unconfirmed
+    // and the ambiguity band routes it to a person). None is a plain miss.
+    const scored = score(await replayAll(), parseOutcomes(await readFile(outcomesPath, 'utf8'), 'm'));
+    const wronglyRefused = scored
+      .filter((s) => !s.admitted && s.outcome.result === 'succeeded')
+      .map((s) => s.issueNumber)
+      .sort((a, b) => a - b);
+    expect(wronglyRefused).toEqual([33, 35]);
+  });
+
+  it('admits #27 and counts its failure as one the Issue text could not show', async () => {
+    // #27's worker emitted NO_REPLY instead of its final JSON. That is a
+    // property of the worker, not of the Issue, so admitting it was correct and
+    // the miss is not chargeable to any question about the text.
+    const scored = score(await replayAll(), parseOutcomes(await readFile(outcomesPath, 'utf8'), 'm'));
+    const admittedFails = scored.filter((s) => s.admitted && s.outcome.result === 'failed');
+    expect(admittedFails.map((s) => s.issueNumber)).toEqual([27]);
+    expect(admittedFails[0]?.outcome.cause).toBe('worker_output');
+  });
+
+  it('does not score the Issue that was closed before it could be judged', async () => {
+    // #28 is inconclusive: this evaluation ran after the run had closed it, so
+    // the gate failed closed on a closed Issue. During the run it was open and
+    // produced its design decision. Counting it either way would invent a fact.
+    const scored = score(await replayAll(), parseOutcomes(await readFile(outcomesPath, 'utf8'), 'm'));
+    expect(scored.find((s) => s.issueNumber === 28)?.correct).toBeNull();
+  });
+});
+
 describe('parseOutcomes', () => {
   it('rejects a file with no outcomes', () => {
     expect(() => parseOutcomes(JSON.stringify({ run: 'x' }), 'o')).toThrow(ReplayError);

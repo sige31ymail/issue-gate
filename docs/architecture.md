@@ -226,6 +226,34 @@ easily have run the other way, and a check tuned against it would have learned
 to predict the runner's bookkeeping rather than whether the work got done.
 Ground truth here is whether a pull request implementing the Issue exists.
 
+## The mawshift corpus
+
+hexbound's corpus was failure-heavy and one-sided: every Issue in it should
+have been refused or was, so it bounded the thresholds from below but never
+tested a wrong refusal. mawshift, run 2026-09-22, is the complement — fifteen of
+seventeen Issues produced usable work. Its evaluations were collected in
+dry-run, without writing to any Issue: the gate reads Issue text and never the
+runner, so scoring its answers after the run does not leak the outcome into the
+prediction.
+
+Two things it settled. First, the same lesson as hexbound at greater strength:
+openclaw reported 0 of 17 succeeded, all `worker_output_invalid`, because its
+night runner parsed the old CLI envelope shape while the current CLI returns a
+new one (openclaw-config #27). Every outcome here is read from the pull requests
+instead. Second, it moved the one enforced check. hexbound's dependencies were
+all on unmerged code and scored 0.75-0.83; mawshift's design Issues depend on
+decisions made in the same run, and those scored 0.20-0.57 — a cluster sitting
+on the old 0.35 line, with #29 one point over it and a pull request to its name.
+The real blocks stayed at 0.91 and 0.95, so the threshold moved to 0.65, in the
+gap, with no change to hexbound.
+
+What it could not settle: #35 scored 0.95 and produced a PR, but its own body
+declares it blocked until #27's spec is transcribed, and #27 produced nothing,
+so the block was defensible and "it produced a PR" is not the same as "it should
+have been admitted." #27 itself was admitted and failed on a `NO_REPLY` from the
+worker, which no question about Issue text could predict. Those are the limits
+of reading readiness from text.
+
 ## Comparisons carry a tolerance
 
 Thresholds and the dead band are hand-written decimals, and binary floating

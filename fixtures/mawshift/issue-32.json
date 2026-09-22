@@ -1,0 +1,28 @@
+{
+  "gate_version": 1,
+  "result": "READY",
+  "repository": "sige31ymail/mawshift",
+  "issue_number": 32,
+  "checks": {
+    "scope_small_enough": 0.27,
+    "acceptance_criteria_clear": 0.96,
+    "acceptance_criteria_verifiable": 0.9,
+    "requires_human_decision": 0.12,
+    "dependency_blocked": 0.2,
+    "safe_for_unattended_execution": 0.86
+  },
+  "recorded_only": [
+    "scope_small_enough",
+    "acceptance_criteria_clear",
+    "acceptance_criteria_verifiable",
+    "requires_human_decision",
+    "safe_for_unattended_execution"
+  ],
+  "mode": "enforce",
+  "label_applied": "night-queue",
+  "policy_version": "",
+  "model": "jev-1.13.0",
+  "run_url": "https://github.com/sige31ymail/mawshift/actions/runs/35674883265",
+  "evaluated_at": "2026-09-22T01:12:24.828Z",
+  "error": null
+}

@@ -162,11 +162,26 @@ checks:
 
   dependency_blocked:
     kind: noul
-    # Corpus: 0.05-0.24 for independent Issues, 0.75-0.83 for two that genuinely
-    # wait on a third. The check found a real dependency chain, and the gap
-    # between the two groups is wide enough that the line's exact place is not
-    # delicate. The one check here whose answers tracked outcomes.
-    max_yes_probability: 0.35
+    # The one check here whose answers track outcomes, across two corpora.
+    #
+    # hexbound (2026-09-21): 0.05-0.24 for independent Issues, 0.75 and 0.83 for
+    # the two that genuinely waited on a third.
+    #
+    # mawshift (2026-09-22) filled in the middle the first corpus left empty.
+    # Its design Issues carry soft dependencies on decisions made in the same
+    # run, and those scored 0.20-0.57 — a cluster sitting right on the old 0.35
+    # line. #29 landed at 0.36, one point over, and produced a pull request:
+    # the threshold was inside Jev's own run-to-run drift for that cluster. The
+    # genuine blocks stayed high: #30 (waits on unmerged code) 0.91, #35 (its
+    # body declares itself BLOCKED on #27) 0.95.
+    #
+    # So the true blocks in both corpora are >=0.75 and everything that should
+    # pass is <=0.57. 0.65 sits in that gap. It keeps hexbound's two blocks and
+    # mawshift's, and stops refusing design Issues over a decision that gets
+    # made anyway. Above 0.5 an answer is still caught by the ambiguity band
+    # before it reaches this line, so a genuinely uncertain 0.57 (#33) is
+    # HUMAN_REVIEW rather than admitted.
+    max_yes_probability: 0.65
     outcome: BLOCKED
     instructions: >-
       Is this Issue blocked by another Issue, a change in another repository, a

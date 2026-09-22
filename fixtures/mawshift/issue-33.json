@@ -1,0 +1,28 @@
+{
+  "gate_version": 1,
+  "result": "HUMAN_REVIEW",
+  "repository": "sige31ymail/mawshift",
+  "issue_number": 33,
+  "checks": {
+    "scope_small_enough": 0.25,
+    "acceptance_criteria_clear": 0.95,
+    "acceptance_criteria_verifiable": 0.89,
+    "requires_human_decision": 0.12,
+    "dependency_blocked": 0.57,
+    "safe_for_unattended_execution": 0.87
+  },
+  "recorded_only": [
+    "scope_small_enough",
+    "acceptance_criteria_clear",
+    "acceptance_criteria_verifiable",
+    "requires_human_decision",
+    "safe_for_unattended_execution"
+  ],
+  "mode": "enforce",
+  "label_applied": "human-review",
+  "policy_version": "",
+  "model": "jev-1.13.0",
+  "run_url": "https://github.com/sige31ymail/mawshift/actions/runs/35674883265",
+  "evaluated_at": "2026-09-22T01:12:25.844Z",
+  "error": null
+}

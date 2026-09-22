@@ -1,0 +1,15 @@
+{
+  "gate_version": 1,
+  "result": "HUMAN_REVIEW",
+  "repository": "sige31ymail/mawshift",
+  "issue_number": 28,
+  "checks": {},
+  "recorded_only": [],
+  "mode": "enforce",
+  "label_applied": "human-review",
+  "policy_version": "",
+  "model": null,
+  "run_url": "https://github.com/sige31ymail/mawshift/actions/runs/35674883265",
+  "evaluated_at": "2026-09-22T01:12:20.929Z",
+  "error": "Issue is closed"
+}

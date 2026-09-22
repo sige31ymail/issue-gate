@@ -1,0 +1,117 @@
+{
+  "_comment": [
+    "What the night queue actually did with each mawshift Issue, from the run of",
+    "2026-09-22. Ground truth is whether the Issue produced usable work, read from",
+    "the repository's pull requests and the incident report's reclassification.",
+    "",
+    "openclaw reported '0 succeeded, 17 failed', every one of them",
+    "worker_output_invalid. That was false for all 17. Its night runner parses the",
+    "old CLI envelope shape (result.text) while OpenClaw 2026.9.5 returns",
+    "payloads[].text and final, so every worker's valid final JSON read as",
+    "undefined. Filed as openclaw-config #27. Scoring against that report would",
+    "have taught the gate to predict a schema mismatch.",
+    "",
+    "The gate was not installed on mawshift when this run happened. These outcomes",
+    "were recorded first; the evaluations beside them were collected afterwards,",
+    "in dry-run, without writing to any Issue. The gate reads Issue text and never",
+    "sees the runner, so collecting its answers after the fact does not leak the",
+    "result into the prediction.",
+    "",
+    "'cause' names why a failure happened, because only some failures are knowable",
+    "from an Issue. A dependency on unmerged code is visible in the Issue text. A",
+    "worker emitting NO_REPLY instead of its final JSON is not.",
+    "",
+    "Design Issues count as succeeded when they produced the decision they asked",
+    "for and unblocked their successors. They open no pull request, which openclaw",
+    "separately miscounts as missing_pr; that is the runner's completion model, not",
+    "the Issue failing."
+  ],
+  "run": "night_issue 2026-09-22, sige31ymail/mawshift, 17 Issues, 15 produced usable work",
+  "outcomes": {
+    "17": {
+      "result": "succeeded",
+      "cause": null,
+      "evidence": "PR #38, verify success"
+    },
+    "18": {
+      "result": "succeeded",
+      "cause": null,
+      "evidence": "PR #39, verify success"
+    },
+    "22": {
+      "result": "succeeded",
+      "cause": null,
+      "evidence": "PR #40, verify success"
+    },
+    "23": {
+      "result": "succeeded",
+      "cause": null,
+      "evidence": "design Issue: settled the side-scroller pause/resume specification and unblocked #32 and #33. No PR by design"
+    },
+    "24": {
+      "result": "succeeded",
+      "cause": null,
+      "evidence": "design Issue: settled the HUD overlap approach and unblocked #34. No PR by design"
+    },
+    "25": {
+      "result": "succeeded",
+      "cause": null,
+      "evidence": "PR #41, verify success"
+    },
+    "27": {
+      "result": "failed",
+      "cause": "worker_output",
+      "evidence": "the worker's final assistant text was NO_REPLY rather than the required JSON, so nothing was produced. A property of the worker, not of the Issue"
+    },
+    "28": {
+      "result": "inconclusive",
+      "cause": "evaluation_timing",
+      "evidence": "the gate could not judge it: this evaluation ran after the run had closed the Issue, so the gate failed closed on a closed Issue. During the night run itself #28 was open and produced its design decision (unblocking #36). Not scorable either way"
+    },
+    "29": {
+      "result": "succeeded",
+      "cause": null,
+      "evidence": "PR #42, verify success"
+    },
+    "30": {
+      "result": "failed",
+      "cause": "dependency",
+      "evidence": "the worker stopped deliberately: #17 and #18 were still open, their PRs #38 and #39 unmerged, and the fog and procedural-texture work they carry was absent from its worktree. The Issue body states the dependency outright"
+    },
+    "31": {
+      "result": "succeeded",
+      "cause": null,
+      "evidence": "PR #43, verify success"
+    },
+    "32": {
+      "result": "succeeded",
+      "cause": null,
+      "evidence": "PR #44, verify success"
+    },
+    "33": {
+      "result": "succeeded",
+      "cause": null,
+      "evidence": "PR #45. Stacked on #32's branch, so the verify workflow's main-targeting condition did not run it; the pull request was produced"
+    },
+    "34": {
+      "result": "succeeded",
+      "cause": null,
+      "evidence": "PR #46, verify success"
+    },
+    "35": {
+      "result": "succeeded",
+      "cause": null,
+      "evidence": "PR #47, verify success. Contested: the Issue body declares 'BLOCKED: do not queue until #27's spec is transcribed', and #27 produced nothing (NO_REPLY), so its own unblock condition was never met. A PR exists, but the gate's block was defensible"
+    },
+    "36": {
+      "result": "succeeded",
+      "cause": null,
+      "evidence": "PR #48, verify success"
+    },
+    "37": {
+      "result": "succeeded",
+      "cause": null,
+      "evidence": "PR #49, verify success"
+    }
+  }
+}

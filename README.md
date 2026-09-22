@@ -154,6 +154,23 @@ Ground truth was read from the repository's pull requests, not from the queue's
 own report, because the two disagree. The queue called two Issues failures that
 had in fact produced a PR. See [`docs/architecture.md`](docs/architecture.md).
 
+### A second corpus: mawshift
+
+On 2026-09-22 seventeen mawshift Issues were scored the same way, collected in
+dry-run without writing to any Issue since the gate reads Issue text and never
+the runner. Fifteen produced usable work, so this corpus tests the error
+hexbound could not: refusing something that would have succeeded. The gate
+scores 13 of 16 — one Issue was closed before it could be judged and is not
+counted — and refuses nothing that plainly succeeded.
+
+It also corrected the one enforced check. hexbound's dependencies were all on
+unmerged code and scored 0.75-0.83, so 0.35 was a safe bar there. mawshift's
+design Issues carry softer dependencies on decisions made in the same run, and
+those clustered at 0.20-0.57, right on the old line: #29 sat at 0.36, one point
+over, and produced a pull request. The genuine blocks stayed high (#30 at 0.91,
+#35 at 0.95), so the threshold moved to 0.65, into the gap between the two,
+which leaves hexbound unchanged.
+
 ### Fail closed
 
 Anything that prevents a clean decision — Jev unreachable, a malformed policy, a

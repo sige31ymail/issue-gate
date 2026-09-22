@@ -1,0 +1,28 @@
+{
+  "gate_version": 1,
+  "result": "BLOCKED",
+  "repository": "sige31ymail/mawshift",
+  "issue_number": 35,
+  "checks": {
+    "scope_small_enough": 0.15,
+    "acceptance_criteria_clear": 0.85,
+    "acceptance_criteria_verifiable": 0.79,
+    "requires_human_decision": 0.4,
+    "dependency_blocked": 0.95,
+    "safe_for_unattended_execution": 0.79
+  },
+  "recorded_only": [
+    "scope_small_enough",
+    "acceptance_criteria_clear",
+    "acceptance_criteria_verifiable",
+    "requires_human_decision",
+    "safe_for_unattended_execution"
+  ],
+  "mode": "enforce",
+  "label_applied": "blocked",
+  "policy_version": "",
+  "model": "jev-1.13.0",
+  "run_url": "https://github.com/sige31ymail/mawshift/actions/runs/35674883265",
+  "evaluated_at": "2026-09-22T01:12:27.703Z",
+  "error": null
+}
